@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start": "node server/index.js",
     "server": "node server/index.js",
     "server:dev": "node --watch --experimental-strip-types server/index.ts",
+    "render:build": "npm install && npx prisma generate && npx prisma db push",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:seed": "node --experimental-strip-types server/seed.ts",

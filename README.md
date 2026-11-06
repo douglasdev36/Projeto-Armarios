@@ -1,73 +1,84 @@
-# Welcome to your Lovable project
+# 🏫 Sistema de Gerenciamento de Armários Escolares
 
-## Project info
+Sistema Full Stack completo para gestão, controle e sorteio de armários escolares, cadastro de turmas, alunos e histórico de empréstimo de chaves.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+---
 
-## How can I edit this code?
+## 🛠️ Tecnologias Utilizadas
 
-There are several ways of editing your application.
+- **Frontend:** React 18, TypeScript, Vite, Tailwind CSS, Radix UI, Lucide Icons
+- **Backend:** Node.js, Express, Prisma ORM, JWT, BcryptJS
+- **Banco de Dados:** PostgreSQL
 
-**Use Lovable**
+---
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## 🚀 Como Rodar Localmente
 
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+### 1. Clonar o repositório
+```bash
+git clone https://github.com/douglasdev36/Projeto-Armarios.git
+cd Projeto-Armarios
 ```
 
-**Edit a file directly in GitHub**
+### 2. Instalar dependências
+```bash
+npm install
+```
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### 3. Configurar variáveis de ambiente
+Crie um arquivo `.env` na raiz com base no `.env.example`:
+```env
+DATABASE_URL="postgresql://postgres:postgrespassword@localhost:5432/armarios_db?schema=public"
+PORT=3001
+VITE_API_URL="http://localhost:3001/api"
+```
 
-**Use GitHub Codespaces**
+### 4. Iniciar o banco de dados (Docker)
+```bash
+docker compose up -d
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### 5. Executar migrações do banco
+```bash
+npm run db:push
+npm run db:seed
+```
 
-## What technologies are used for this project?
+### 6. Iniciar os servidores
+- **Backend:** `npm run server` (rodando em `http://localhost:3001`)
+- **Frontend:** `npm run dev` (rodando em `http://localhost:8081`)
 
-This project is built with:
+---
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## ☁️ Guia de Deploy Gratuito (Neon + Render + Vercel)
 
-## How can I deploy this project?
+Você pode hospedar este projeto sem custos usando o mesmo repositório:
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+### 1. Banco de Dados — Neon (PostgreSQL)
+1. Acesse [neon.tech](https://neon.tech) e crie um projeto gratuito.
+2. Copie a **Connection String** gerada (ex: `postgresql://usuario:senha@ep-xyz.us-east-2.aws.neon.tech/neondb?sslmode=require`).
 
-## Can I connect a custom domain to my Lovable project?
+### 2. Backend — Render (Web Service)
+1. Acesse [render.com](https://render.com) e clique em **New + > Web Service**.
+2. Conecte o repositório `Projeto-Armarios`.
+3. Configure:
+   - **Environment:** `Node`
+   - **Build Command:** `npm run render:build`
+   - **Start Command:** `npm start`
+4. Em **Environment Variables**:
+   - `DATABASE_URL`: *Cole a URL do Neon*
+   - `PORT`: `10000`
+5. Clique em **Create Web Service** e copie a URL gerada (ex: `https://api-armarios.onrender.com`).
 
-Yes, you can!
+### 3. Frontend — Vercel
+1. Acesse [vercel.com](https://vercel.com) e importe o repositório `Projeto-Armarios`.
+2. Em **Framework Preset**, selecione **Vite**.
+3. Em **Environment Variables**:
+   - `VITE_API_URL`: `https://sua-api.onrender.com/api` *(URL gerada pelo Render com `/api` no final)*
+4. Clique em **Deploy**.
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+---
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## 🔐 Acesso Padrão Inicial
+- **E-mail:** `coordenador@escola.com`
+- **Senha:** `admin123`

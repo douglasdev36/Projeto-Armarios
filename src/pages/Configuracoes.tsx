@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { 
   Select,
   SelectContent,
@@ -13,6 +14,34 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { 
   Bell, 
   Shield, 
@@ -22,11 +51,21 @@ import {
   Save,
   Plus,
   Trash2,
-  Archive
+  Archive,
+  Users,
+  UserPlus,
+  Key,
+  Mail,
+  UserCheck,
+  ShieldCheck,
+  Lock
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/hooks/use-theme";
+import { useAuth } from "@/contexts/AuthContext";
+import { api, UserItem } from "@/lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 interface PrefixoConfig {
   id: number;
@@ -37,7 +76,174 @@ interface PrefixoConfig {
 
 const Configuracoes = () => {
   const { toast } = useToast();
+  const { user, updateUser } = useAuth();
+  const queryClient = useQueryClient();
   const { isDark, toggleTheme, primaryColor, changePrimaryColor, colorPalettes } = useTheme();
+
+  // Estados do Perfil / Senha do Usuário Logado
+  const [nomePerfil, setNomePerfil] = useState(user?.nome || "");
+  const [emailPerfil, setEmailPerfil] = useState(user?.email || "");
+  const [senhaAtual, setSenhaAtual] = useState("");
+  const [novaSenha, setNovaSenha] = useState("");
+  const [confirmarNovaSenha, setConfirmarNovaSenha] = useState("");
+  const [salvandoPerfil, setSalvandoPerfil] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setNomePerfil(user.nome);
+      setEmailPerfil(user.email);
+    }
+  }, [user]);
+
+  // Consulta de Usuários do Sistema
+  const { data: usuarios = [], isLoading: carregandoUsuarios } = useQuery({
+    queryKey: ["usuarios"],
+    queryFn: api.getUsuarios,
+  });
+
+  // Modal Novo Usuário
+  const [novoUsuarioOpen, setNovoUsuarioOpen] = useState(false);
+  const [novoNome, setNovoNome] = useState("");
+  const [novoEmail, setNovoEmail] = useState("");
+  const [novaSenhaUsuario, setNovaSenhaUsuario] = useState("");
+  const [novoRole, setNovoRole] = useState("coordenador");
+  const [salvandoUsuario, setSalvandoUsuario] = useState(false);
+
+  const handleSalvarPerfil = async () => {
+    if (!nomePerfil.trim()) {
+      toast({
+        title: "Nome obrigatório",
+        description: "Por favor, preencha seu nome.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!emailPerfil.trim() || !emailPerfil.includes("@")) {
+      toast({
+        title: "E-mail inválido",
+        description: "Por favor, preencha um e-mail válido.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (novaSenha) {
+      if (novaSenha.length < 6) {
+        toast({
+          title: "Senha muito curta",
+          description: "A nova senha deve ter no mínimo 6 caracteres.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (novaSenha !== confirmarNovaSenha) {
+        toast({
+          title: "Senhas não conferem",
+          description: "A confirmação não coincide com a nova senha digitada.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    try {
+      setSalvandoPerfil(true);
+      const res = await api.updateProfile({
+        nome: nomePerfil.trim(),
+        email: emailPerfil.trim(),
+        currentPassword: senhaAtual || undefined,
+        newPassword: novaSenha || undefined,
+      });
+
+      updateUser(res.user, res.token);
+      setSenhaAtual("");
+      setNovaSenha("");
+      setConfirmarNovaSenha("");
+
+      toast({
+        title: "✨ Perfil atualizado!",
+        description: "Suas informações e credenciais de acesso foram salvas com sucesso.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Erro ao atualizar perfil",
+        description: err.message || "Não foi possível atualizar seus dados.",
+        variant: "destructive",
+      });
+    } finally {
+      setSalvandoPerfil(false);
+    }
+  };
+
+  const handleCriarUsuario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!novoNome.trim() || !novoEmail.trim() || !novaSenhaUsuario) {
+      toast({
+        title: "Campos obrigatórios",
+        description: "Preencha nome, e-mail e senha inicial.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (novaSenhaUsuario.length < 6) {
+      toast({
+        title: "Senha muito curta",
+        description: "A senha deve ter no mínimo 6 dígitos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setSalvandoUsuario(true);
+      await api.createUsuario({
+        nome: novoNome.trim(),
+        email: novoEmail.trim(),
+        senha: novaSenhaUsuario,
+        role: novoRole,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["usuarios"] });
+      setNovoUsuarioOpen(false);
+      setNovoNome("");
+      setNovoEmail("");
+      setNovaSenhaUsuario("");
+      setNovoRole("coordenador");
+
+      toast({
+        title: "Usuário cadastrado!",
+        description: "Novo acesso criado com sucesso no sistema.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Erro ao criar usuário",
+        description: err.message || "Não foi possível criar o usuário.",
+        variant: "destructive",
+      });
+    } finally {
+      setSalvandoUsuario(false);
+    }
+  };
+
+  const handleExcluirUsuario = async (id: string, nome: string) => {
+    try {
+      await api.deleteUsuario(id);
+      queryClient.invalidateQueries({ queryKey: ["usuarios"] });
+      toast({
+        title: "Usuário removido",
+        description: `O acesso de ${nome} foi removido com sucesso.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: "Erro ao remover usuário",
+        description: err.message || "Não foi possível excluir o usuário.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const [notificacoesEmail, setNotificacoesEmail] = useState(true);
   const [notificacoesSistema, setNotificacoesSistema] = useState(true);
   const [prefixos, setPrefixos] = useState<PrefixoConfig[]>([
@@ -370,39 +576,287 @@ const Configuracoes = () => {
               </CardContent>
             </Card>
 
-            {/* Segurança */}
-            <Card className="rounded-3xl">
+            {/* Meu Perfil e Credenciais */}
+            <Card className="rounded-3xl border-primary/20">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <Shield className="h-5 w-5 text-primary" />
-                  Segurança
+                  <ShieldCheck className="h-5 w-5 text-primary" />
+                  Meu Perfil & Segurança de Acesso
                 </CardTitle>
-                <CardDescription>Configurações de segurança da conta</CardDescription>
+                <CardDescription>
+                  Atualize seu nome, endereço de e-mail e troque sua senha de login.
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="senhaAtual">Senha Atual</Label>
+                    <Label htmlFor="nomePerfil">Nome do Usuário</Label>
                     <Input 
-                      id="senhaAtual" 
-                      type="password"
-                      placeholder="••••••••" 
+                      id="nomePerfil" 
+                      value={nomePerfil}
+                      onChange={(e) => setNomePerfil(e.target.value)}
+                      placeholder="Seu nome completo" 
                       className="rounded-2xl"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="novaSenha">Nova Senha</Label>
+                    <Label htmlFor="emailPerfil">E-mail de Acesso (Login)</Label>
                     <Input 
-                      id="novaSenha" 
-                      type="password"
-                      placeholder="••••••••" 
+                      id="emailPerfil" 
+                      type="email"
+                      value={emailPerfil}
+                      onChange={(e) => setEmailPerfil(e.target.value)}
+                      placeholder="seu.email@escola.com" 
                       className="rounded-2xl"
                     />
                   </div>
                 </div>
-                <Button variant="outline" className="rounded-2xl">
-                  Alterar Senha
-                </Button>
+
+                <Separator />
+
+                <div>
+                  <h4 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2">
+                    <Lock className="h-4 w-4 text-primary" />
+                    Alterar Senha de Acesso
+                  </h4>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Deixe os campos de senha em branco caso deseje manter a senha atual.
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="senhaAtual" className="text-xs">Senha Atual</Label>
+                      <Input 
+                        id="senhaAtual" 
+                        type="password"
+                        value={senhaAtual}
+                        onChange={(e) => setSenhaAtual(e.target.value)}
+                        placeholder="••••••••" 
+                        className="rounded-2xl"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="novaSenha" className="text-xs">Nova Senha (min. 6 dígitos)</Label>
+                      <Input 
+                        id="novaSenha" 
+                        type="password"
+                        value={novaSenha}
+                        onChange={(e) => setNovaSenha(e.target.value)}
+                        placeholder="••••••••" 
+                        className="rounded-2xl"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="confirmarNovaSenha" className="text-xs">Confirmar Nova Senha</Label>
+                      <Input 
+                        id="confirmarNovaSenha" 
+                        type="password"
+                        value={confirmarNovaSenha}
+                        onChange={(e) => setConfirmarNovaSenha(e.target.value)}
+                        placeholder="••••••••" 
+                        className="rounded-2xl"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button 
+                    onClick={handleSalvarPerfil} 
+                    disabled={salvandoPerfil}
+                    className="rounded-2xl gap-2 font-medium"
+                  >
+                    <Save className="h-4 w-4" />
+                    {salvandoPerfil ? "Salvando..." : "Atualizar Meus Dados"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Gerenciamento de Usuários do Sistema */}
+            <Card className="rounded-3xl">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <div>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Users className="h-5 w-5 text-primary" />
+                    Usuários e Acessos ao Sistema
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    Cadastre novos membros da equipe e gerencie quem pode acessar o painel.
+                  </CardDescription>
+                </div>
+
+                {/* Dialog de Criação de Novo Usuário */}
+                <Dialog open={novoUsuarioOpen} onOpenChange={setNovoUsuarioOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="rounded-2xl gap-2 font-medium">
+                      <UserPlus className="h-4 w-4" />
+                      Novo Usuário
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md rounded-3xl">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2 text-xl">
+                        <UserPlus className="h-5 w-5 text-primary" />
+                        Cadastrar Novo Usuário
+                      </DialogTitle>
+                      <DialogDescription>
+                        Crie uma nova conta para outro coordenador, administrador ou atendente.
+                      </DialogDescription>
+                    </DialogHeader>
+
+                    <form onSubmit={handleCriarUsuario} className="space-y-4 py-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="novoNome" className="text-xs font-semibold">Nome Completo</Label>
+                        <Input
+                          id="novoNome"
+                          placeholder="Ex: Maria Fernandes"
+                          className="rounded-2xl"
+                          value={novoNome}
+                          onChange={(e) => setNovoNome(e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="novoEmail" className="text-xs font-semibold">E-mail Institucional</Label>
+                        <Input
+                          id="novoEmail"
+                          type="email"
+                          placeholder="maria@escola.com"
+                          className="rounded-2xl"
+                          value={novoEmail}
+                          onChange={(e) => setNovoEmail(e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="novaSenhaUsuario" className="text-xs font-semibold">Senha Inicial (mínimo 6 dígitos)</Label>
+                        <Input
+                          id="novaSenhaUsuario"
+                          type="password"
+                          placeholder="••••••••"
+                          className="rounded-2xl"
+                          value={novaSenhaUsuario}
+                          onChange={(e) => setNovaSenhaUsuario(e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="novoRole" className="text-xs font-semibold">Função / Perfil de Acesso</Label>
+                        <Select value={novoRole} onValueChange={setNovoRole}>
+                          <SelectTrigger className="rounded-2xl">
+                            <SelectValue placeholder="Selecione o cargo" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="coordenador">Coordenador Pedagógico</SelectItem>
+                            <SelectItem value="admin">Administrador Geral</SelectItem>
+                            <SelectItem value="atendente">Atendente / Secretaria</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <DialogFooter className="pt-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setNovoUsuarioOpen(false)}
+                          className="rounded-2xl"
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          type="submit"
+                          disabled={salvandoUsuario}
+                          className="rounded-2xl"
+                        >
+                          {salvandoUsuario ? "Cadastrando..." : "Cadastrar Usuário"}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+
+              <CardContent>
+                {carregandoUsuarios ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">Carregando usuários...</p>
+                ) : usuarios.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">Nenhum usuário cadastrado.</p>
+                ) : (
+                  <div className="rounded-2xl border overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Usuário</TableHead>
+                          <TableHead>E-mail</TableHead>
+                          <TableHead>Função</TableHead>
+                          <TableHead className="text-right">Ação</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {usuarios.map((u) => {
+                          const isCurrentUser = u.id === user?.id;
+                          return (
+                            <TableRow key={u.id}>
+                              <TableCell className="font-medium flex items-center gap-2">
+                                <span>{u.nome}</span>
+                                {isCurrentUser && (
+                                  <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
+                                    Você
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                              <TableCell>
+                                <Badge variant="secondary" className="capitalize">
+                                  {u.role || "Coordenador"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {isCurrentUser ? (
+                                  <span className="text-xs text-muted-foreground italic">Em uso</span>
+                                ) : (
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="text-destructive hover:text-destructive hover:bg-destructive/10 rounded-xl h-8 w-8"
+                                        title="Excluir Usuário"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent className="rounded-3xl">
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Excluir Usuário?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          Tem certeza que deseja remover o acesso de <strong>{u.nome}</strong> ({u.email})? Esta ação não pode ser desfeita.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel className="rounded-2xl">Cancelar</AlertDialogCancel>
+                                        <AlertDialogAction
+                                          onClick={() => handleExcluirUsuario(u.id, u.nome)}
+                                          className="rounded-2xl bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                                        >
+                                          Confirmar Exclusão
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

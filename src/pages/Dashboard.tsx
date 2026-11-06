@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Archive, Users, CheckCircle, Lock, Search } from "lucide-react";
+import { Archive, Users, CheckCircle, Lock, Search, ShieldAlert, KeyRound } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { AppSidebar } from "@/components/AppSidebar";
 import { StatCard } from "@/components/StatCard";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -14,9 +15,13 @@ import {
 } from "@/components/ui/table";
 import { LockerBadge } from "@/components/LockerBadge";
 import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { PrimeiroAcessoModal } from "@/components/PrimeiroAcessoModal";
 
 export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [primeiroAcessoOpen, setPrimeiroAcessoOpen] = useState(false);
+  const { user } = useAuth();
 
   const { data: stats } = useQuery({
     queryKey: ["dashboardStats"],
@@ -47,6 +52,35 @@ export default function Dashboard() {
               Painel de consulta e estatísticas do gerenciamento de armários escolares.
             </p>
           </div>
+
+          {/* Alerta de Primeiro Acesso com Credenciais Padrão */}
+          {user?.email === "coordenador@escola.com" && (
+            <div className="mb-8 p-4 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+                  <ShieldAlert className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm text-foreground">
+                    Segurança: Você está utilizando a conta padrão de fábrica
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Recomendamos definir seu nome, seu e-mail institucional e uma senha segura exclusiva.
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => setPrimeiroAcessoOpen(true)}
+                className="rounded-2xl shrink-0 gap-2 font-medium bg-amber-600 hover:bg-amber-700 text-white"
+                size="sm"
+              >
+                <KeyRound className="h-4 w-4" />
+                Personalizar Acesso
+              </Button>
+            </div>
+          )}
+
+          <PrimeiroAcessoModal open={primeiroAcessoOpen} onOpenChange={setPrimeiroAcessoOpen} />
 
           {/* Stats Grid - Read Only */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

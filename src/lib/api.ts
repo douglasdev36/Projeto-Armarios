@@ -151,6 +151,50 @@ export const api = {
     return handleResponse<UserItem>(res);
   },
 
+  async updateProfile(data: {
+    nome?: string;
+    email?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  }): Promise<{ message: string; user: UserItem; token: string }> {
+    const res = await fetch(`${API_URL}/auth/profile`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<{ message: string; user: UserItem; token: string }>(res);
+  },
+
+  // --- USUÁRIOS DO SISTEMA ---
+  async getUsuarios(): Promise<UserItem[]> {
+    const res = await fetch(`${API_URL}/usuarios`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<UserItem[]>(res);
+  },
+
+  async createUsuario(data: {
+    nome: string;
+    email: string;
+    senha: string;
+    role?: string;
+  }): Promise<UserItem> {
+    const res = await fetch(`${API_URL}/usuarios`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<UserItem>(res);
+  },
+
+  async deleteUsuario(id: string): Promise<{ message: string }> {
+    const res = await fetch(`${API_URL}/usuarios/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<{ message: string }>(res);
+  },
+
   // --- DASHBOARD ---
   async getDashboardStats(): Promise<DashboardStats> {
     const res = await fetch(`${API_URL}/dashboard/stats`, {

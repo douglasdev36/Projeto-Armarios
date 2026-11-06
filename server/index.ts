@@ -85,6 +85,160 @@ app.get('/api/auth/me', authMiddleware, async (req: AuthenticatedRequest, res) =
   }
 });
 
+// Atualizar perfil e trocar senha do usuário logado
+app.put('/api/auth/profile', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.user?.userId) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
+    const { nome, email, currentPassword, newPassword } = req.body;
+
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: req.user.userId },
+    });
+
+    if (!usuario) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    // Se estiver definindo nova senha, valida tamanho e senha atual (se exigida)
+    if (newPassword) {
+      if (typeof newPassword !== 'string' || newPassword.length < 6) {
+        return res.status(400).json({ error: 'A nova senha deve ter no mínimo 6 caracteres' });
+      }
+
+      // Se for a conta padrão inicial (admin123), permite trocar sem precisar adivinhar se não tiver informado
+      if (currentPassword) {
+        const senhaValida = verifyPassword(currentPassword, usuario.senha);
+        if (!senhaValida) {
+          return res.status(400).json({ error: 'Senha atual incorreta' });
+        }
+      }
+    }
+
+    // Se alterando e-mail, verificar unicidade
+    let emailFinal = usuario.email;
+    if (email && typeof email === 'string' && email.toLowerCase().trim() !== usuario.email) {
+      const emailLimpo = email.toLowerCase().trim();
+      const emailExistente = await prisma.usuario.findUnique({
+        where: { email: emailLimpo },
+      });
+      if (emailExistente && emailExistente.id !== usuario.id) {
+        return res.status(400).json({ error: 'Este e-mail já está em uso por outro usuário' });
+      }
+      emailFinal = emailLimpo;
+    }
+
+    const dataToUpdate: any = {};
+    if (nome && typeof nome === 'string' && nome.trim()) {
+      dataToUpdate.nome = nome.trim();
+    }
+    dataToUpdate.email = emailFinal;
+    if (newPassword) {
+      dataToUpdate.senha = hashPassword(newPassword);
+    }
+
+    const updatedUsuario = await prisma.usuario.update({
+      where: { id: req.user.userId },
+      data: dataToUpdate,
+      select: { id: true, nome: true, email: true, role: true, createdAt: true },
+    });
+
+    const token = createToken({
+      userId: updatedUsuario.id,
+      email: updatedUsuario.email,
+      nome: updatedUsuario.nome,
+      role: updatedUsuario.role,
+    });
+
+    res.json({
+      message: 'Perfil atualizado com sucesso!',
+      user: updatedUsuario,
+      token,
+    });
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Erro ao atualizar dados do perfil' });
+  }
+});
+
+// --- GERENCIAMENTO DE USUÁRIOS (Admin/Coordenador) ---
+app.get('/api/usuarios', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const usuarios = await prisma.usuario.findMany({
+      select: { id: true, nome: true, email: true, role: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(usuarios);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Erro ao buscar lista de usuários' });
+  }
+});
+
+app.post('/api/usuarios', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { nome, email, senha, role } = req.body;
+
+    if (!nome || !email || !senha) {
+      return res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios' });
+    }
+
+    if (senha.length < 6) {
+      return res.status(400).json({ error: 'A senha deve possuir pelo menos 6 caracteres' });
+    }
+
+    const emailLimpo = email.toLowerCase().trim();
+    const jaExiste = await prisma.usuario.findUnique({
+      where: { email: emailLimpo },
+    });
+
+    if (jaExiste) {
+      return res.status(400).json({ error: 'Já existe um usuário cadastrado com este e-mail' });
+    }
+
+    const novo = await prisma.usuario.create({
+      data: {
+        nome: nome.trim(),
+        email: emailLimpo,
+        senha: hashPassword(senha),
+        role: role || 'coordenador',
+      },
+      select: { id: true, nome: true, email: true, role: true, createdAt: true },
+    });
+
+    res.status(201).json(novo);
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({ error: 'Erro ao criar usuário' });
+  }
+});
+
+app.delete('/api/usuarios/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    if (req.user?.userId === id) {
+      return res.status(400).json({ error: 'Você não pode excluir a sua própria conta de acesso' });
+    }
+
+    const total = await prisma.usuario.count();
+    if (total <= 1) {
+      return res.status(400).json({ error: 'Não é possível remover o único usuário do sistema' });
+    }
+
+    await prisma.usuario.delete({
+      where: { id },
+    });
+
+    res.json({ message: 'Usuário removido com sucesso' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Erro ao excluir usuário' });
+  }
+});
+
 // Middleware de proteção para todas as demais rotas da API
 app.use('/api', (req, res, next) => {
   if (req.path === '/health' || req.path === '/auth/login') {

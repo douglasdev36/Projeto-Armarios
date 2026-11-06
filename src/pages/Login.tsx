@@ -1,0 +1,154 @@
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Mail, Lock, Eye, EyeOff, Loader2, KeyRound } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
+
+export default function Login() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { login, isAuthenticated } = useAuth();
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const destination = (location.state as any)?.from?.pathname || "/dashboard";
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate(destination, { replace: true });
+    }
+  }, [isAuthenticated, navigate, destination]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      toast.error("Por favor, preencha o e-mail e a senha.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await login(email, password);
+      toast.success("Bem-vindo(a) ao Sistema de Armários!");
+      navigate(destination, { replace: true });
+    } catch (err: any) {
+      toast.error(err.message || "E-mail ou senha incorretos.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fillDemoCredentials = () => {
+    setEmail("coordenador@escola.com");
+    setPassword("admin123");
+  };
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center relative overflow-hidden">
+      {/* Decorative blobs */}
+      <div className="login-blob w-80 h-80 -top-20 -right-20 fixed opacity-60" />
+      <div className="login-blob w-64 h-64 -bottom-16 -left-16 fixed opacity-60" />
+      
+      {/* Login Card */}
+      <div className="w-full max-w-md mx-4 animate-scale-in z-10">
+        <div className="bg-card rounded-2xl shadow-soft p-8 border border-border">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 text-primary mb-3">
+              <KeyRound className="w-6 h-6" />
+            </div>
+            <h1 className="text-2xl font-bold text-foreground">
+              Acesso do Coordenador
+            </h1>
+            <p className="text-muted-foreground mt-2 text-sm">
+              Utilize suas credenciais para acessar o painel de armários.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="email">E-mail institucional</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="coordenador@escola.com"
+                  className="pl-10"
+                  value={email}
+                  disabled={isLoading}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Senha de acesso</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  className="pl-10 pr-10"
+                  value={password}
+                  disabled={isLoading}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Autenticando...
+                </>
+              ) : (
+                "Entrar no Sistema"
+              )}
+            </Button>
+          </form>
+
+          {/* Dica de credenciais de demonstração */}
+          <div className="mt-6 pt-5 border-t border-border/60 text-center">
+            <p className="text-xs text-muted-foreground">
+              Acesso padrão inicial:{" "}
+              <span className="font-semibold text-foreground">coordenador@escola.com</span> /{" "}
+              <span className="font-semibold text-foreground">admin123</span>
+            </p>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="text-xs text-primary mt-1"
+              onClick={fillDemoCredentials}
+            >
+              Preencher dados de acesso padrão
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

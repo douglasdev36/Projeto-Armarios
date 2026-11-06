@@ -1,0 +1,107 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Turma {
+  id        String   @id @default(uuid())
+  nome      String   @unique
+  anoLetivo String?  @default("2024")
+  curso     String?  @default("Ensino Regular")
+  serie     String?  @default("Ensino Fundamental/Médio")
+  turno     String?  @default("Manhã")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  alunos    Aluno[]
+}
+
+model Aluno {
+  id               String            @id @default(uuid())
+  nome             String
+  matricula        String            @unique
+  telefone         String?
+  email            String?
+  ativo            Boolean           @default(true)
+  turmaId          String?
+  turma            Turma?            @relation(fields: [turmaId], references: [id], onDelete: SetNull)
+  armario          Armario?
+  emprestimosChave EmprestimoChave[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+}
+
+model Armario {
+  id               String    @id @default(uuid())
+  numero           String    @unique
+  bloco            String?
+  status           String    @default("livre") // "livre", "ocupado", "manutencao"
+  dataDistribuicao DateTime?
+  alunoId          String?   @unique
+  aluno            Aluno?    @relation(fields: [alunoId], references: [id], onDelete: SetNull)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model EmprestimoChave {
+  id                   String    @id @default(uuid())
+  alunoId              String
+  aluno                Aluno     @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoNome            String
+  armarioNumero        String
+  dataEmprestimo       DateTime  @default(now())
+  prazoDevolucao       DateTime
+  responsavelEmprestimo String
+  status               String    @default("pendente") // "pendente", "devolvida", "atrasada"
+  dataDevolucao        DateTime?
+  responsavelDevolucao String?
+  observacoes          String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model HistoricoArmario {
+  id               String   @id @default(uuid())
+  armarioNumero    String
+  alunoId          String?
+  alunoNome        String?
+  tipo             String   // "distribuicao", "liberacao", "troca", "sorteio"
+  armarioAnterior  String?
+  responsavelEmail String?
+  detalhes         String?
+  createdAt        DateTime @default(now())
+}
+
+model HistoricoPromocao {
+  id               String   @id @default(uuid())
+  turmaOrigemId    String
+  turmaOrigemNome  String
+  turmaDestinoId   String
+  turmaDestinoNome String
+  qtdPromovidos    Int
+  qtdRetidos       Int
+  responsavelEmail String?
+  createdAt        DateTime @default(now())
+}
+
+model SorteioResultado {
+  id               String   @id @default(uuid())
+  alunoNome        String
+  armario          String
+  turma            String?
+  nomeSorteio      String?  @default("Sorteio Geral")
+  createdAt        DateTime @default(now())
+}
+
+model Usuario {
+  id        String   @id @default(uuid())
+  nome      String
+  email     String   @unique
+  senha     String   // hash da senha (salt + hash seguro)
+  role      String   @default("coordenador")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

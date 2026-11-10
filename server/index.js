@@ -576,6 +576,7 @@ app.get('/api/armarios', async (req, res) => {
       numero: a.numero,
       bloco: a.bloco,
       status: a.status,
+      observacao: a.observacao || null,
       dataDistribuicao: a.dataDistribuicao,
       renovado: a.renovado,
       dataRenovacao: a.dataRenovacao,
@@ -782,6 +783,36 @@ app.post('/api/armarios/trocar', async (req, res) => {
   } catch (error) {
     console.error('Error swapping locker:', error);
     res.status(500).json({ error: 'Erro ao realizar troca de armário' });
+  }
+});
+
+// Atualizar observação de um armário (ex: armário trancado, manutenção, etc.)
+app.put('/api/armarios/:id/observacao', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { observacao } = req.body;
+
+    const armario = await prisma.armario.findUnique({ where: { id } });
+    if (!armario) {
+      return res.status(404).json({ error: 'Armário não encontrado' });
+    }
+
+    const textoLimpo = typeof observacao === 'string' && observacao.trim() ? observacao.trim() : null;
+
+    const atualizado = await prisma.armario.update({
+      where: { id },
+      data: { observacao: textoLimpo },
+    });
+
+    res.json({
+      message: textoLimpo
+        ? `Observação salva no armário ${armario.numero}.`
+        : `Observação removida do armário ${armario.numero}.`,
+      armario: atualizado,
+    });
+  } catch (error) {
+    console.error('Error updating armario observacao:', error);
+    res.status(500).json({ error: 'Erro ao salvar observação do armário' });
   }
 });
 
@@ -1777,6 +1808,29 @@ app.post('/api/chaves/devolver/:id', async (req, res) => {
   } catch (error) {
     console.error('Error registering key return:', error);
     res.status(500).json({ error: 'Erro ao registrar devolução de chave' });
+  }
+});
+
+// ==========================================
+// MÓDULO DE RELATÓRIOS (Dados Reais)
+// ==========================================
+app.get('/api/relatorios/historico', async (req, res) => {
+  try {
+    const [sorteios, movimentacoes] = await Promise.all([
+      prisma.sorteioResultado.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+      }),
+      prisma.historicoArmario.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+      }),
+    ]);
+
+    res.json({ sorteios, movimentacoes });
+  } catch (error) {
+    console.error('Error fetching report history:', error);
+    res.status(500).json({ error: 'Erro ao buscar histórico de relatórios' });
   }
 });
 

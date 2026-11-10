@@ -39,6 +39,7 @@ model Armario {
   numero           String    @unique
   bloco            String?
   status           String    @default("livre") // "livre", "ocupado", "manutencao"
+  observacao       String?
   dataDistribuicao DateTime?
   renovado         Boolean   @default(false)
   dataRenovacao    DateTime?

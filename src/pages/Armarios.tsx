@@ -1,10 +1,20 @@
 import { useState } from "react";
-import { Search, Trash2, Unlock, UserX, AlertCircle, Archive, ShieldAlert, RefreshCw, CheckCircle2, Clock } from "lucide-react";
+import { Search, Trash2, Unlock, UserX, AlertCircle, Archive, ShieldAlert, RefreshCw, CheckCircle2, Clock, StickyNote } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -39,6 +49,8 @@ export default function Armarios() {
   const [selectedBloco, setSelectedBloco] = useState<string>("todos");
   const [armarioParaLiberar, setArmarioParaLiberar] = useState<ArmarioItem | null>(null);
   const [armarioParaExcluir, setArmarioParaExcluir] = useState<ArmarioItem | null>(null);
+  const [armarioParaObservacao, setArmarioParaObservacao] = useState<ArmarioItem | null>(null);
+  const [observacaoTexto, setObservacaoTexto] = useState("");
   const [renovacaoDialogOpen, setRenovacaoDialogOpen] = useState(false);
 
   const queryClient = useQueryClient();
@@ -62,6 +74,20 @@ export default function Armarios() {
     },
     onError: (err: any) => {
       toast.error(err.message || "Erro ao renovar armário");
+    },
+  });
+
+  const observacaoMutation = useMutation({
+    mutationFn: ({ id, observacao }: { id: string; observacao: string }) =>
+      api.updateObservacaoArmario(id, observacao),
+    onSuccess: (data) => {
+      toast.success(data.message || "Observação atualizada!");
+      queryClient.invalidateQueries({ queryKey: ["armarios"] });
+      setArmarioParaObservacao(null);
+      setObservacaoTexto("");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Erro ao salvar observação");
     },
   });
 
@@ -390,11 +416,21 @@ export default function Armarios() {
                       return (
                         <TableRow key={armario.id} className="hover:bg-muted/40 transition-colors">
                           <TableCell className="font-bold text-foreground">
-                            {armario.numero}
-                            {armario.bloco && (
-                              <span className="text-xs text-muted-foreground font-normal ml-1">
-                                (Bloco {armario.bloco})
-                              </span>
+                            <div>
+                              {armario.numero}
+                              {armario.bloco && (
+                                <span className="text-xs text-muted-foreground font-normal ml-1">
+                                  (Bloco {armario.bloco})
+                                </span>
+                              )}
+                            </div>
+                            {armario.observacao && (
+                              <div className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-md">
+                                <StickyNote className="h-3 w-3 shrink-0" />
+                                <span className="truncate max-w-[160px]" title={armario.observacao}>
+                                  {armario.observacao}
+                                </span>
+                              </div>
                             )}
                           </TableCell>
 
@@ -446,6 +482,24 @@ export default function Armarios() {
                                   {/* 3.2. Distribuição manual */}
                                   <DistribuirArmarioModal armario={armario} />
 
+                                  {/* Adicionar / Editar Observação */}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={`h-8 w-8 rounded-lg ${
+                                      armario.observacao
+                                        ? "text-amber-600 bg-amber-500/10 hover:bg-amber-500/20"
+                                        : "text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"
+                                    }`}
+                                    title={armario.observacao ? `Observação: ${armario.observacao}` : "Adicionar observação"}
+                                    onClick={() => {
+                                      setArmarioParaObservacao(armario);
+                                      setObservacaoTexto(armario.observacao || "");
+                                    }}
+                                  >
+                                    <StickyNote className="h-4 w-4" />
+                                  </Button>
+
                                   {/* 3.5. Exclusão individual de armário livre */}
                                   <Button
                                     variant="ghost"
@@ -474,6 +528,24 @@ export default function Armarios() {
 
                                   {/* 3.4. Troca de armário */}
                                   <TrocarArmarioModal armarioAtual={armario} />
+
+                                  {/* Adicionar / Editar Observação */}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={`h-8 w-8 rounded-lg ${
+                                      armario.observacao
+                                        ? "text-amber-600 bg-amber-500/10 hover:bg-amber-500/20"
+                                        : "text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"
+                                    }`}
+                                    title={armario.observacao ? `Observação: ${armario.observacao}` : "Adicionar observação"}
+                                    onClick={() => {
+                                      setArmarioParaObservacao(armario);
+                                      setObservacaoTexto(armario.observacao || "");
+                                    }}
+                                  >
+                                    <StickyNote className="h-4 w-4" />
+                                  </Button>
 
                                   {/* 3.3. Liberação de armário */}
                                   <Button
@@ -543,21 +615,99 @@ export default function Armarios() {
               Tem certeza de que deseja remover permanentemente o armário <strong>{armarioParaExcluir?.numero}</strong> do sistema?
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl"
-              onClick={() => {
-                if (armarioParaExcluir) {
-                  excluirMutation.mutate(armarioParaExcluir.id);
+            <AlertDialogFooter>
+              <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl"
+                onClick={() => {
+                  if (armarioParaExcluir) {
+                    excluirMutation.mutate(armarioParaExcluir.id);
+                  }
+                }}
+              >
+                Sim, excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+      {/* Dialog de Observação do Armário */}
+      <Dialog
+        open={!!armarioParaObservacao}
+        onOpenChange={(val) => {
+          if (!val) {
+            setArmarioParaObservacao(null);
+            setObservacaoTexto("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <StickyNote className="h-5 w-5 text-amber-600" />
+              Observação — Armário {armarioParaObservacao?.numero}
+            </DialogTitle>
+            <DialogDescription>
+              Registre avisos importantes sobre este armário (ex: armário trancado, sem chave, aguardando manutenção).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 py-2">
+            <Label htmlFor="obs-armario" className="text-xs font-semibold text-muted-foreground">
+              Observação
+            </Label>
+            <Textarea
+              id="obs-armario"
+              placeholder="Ex: Armário trancado sem chave..."
+              className="rounded-xl min-h-[100px]"
+              value={observacaoTexto}
+              onChange={(e) => setObservacaoTexto(e.target.value)}
+            />
+          </div>
+
+          <DialogFooter className="flex flex-wrap justify-between gap-2">
+            {armarioParaObservacao?.observacao && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="rounded-xl text-rose-600 hover:text-rose-700 hover:bg-rose-500/10 mr-auto"
+                disabled={observacaoMutation.isPending}
+                onClick={() =>
+                  observacaoMutation.mutate({
+                    id: armarioParaObservacao.id,
+                    observacao: "",
+                  })
                 }
-              }}
-            >
-              Sim, excluir
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              >
+                Remover Observação
+              </Button>
+            )}
+            <div className="flex gap-2 ml-auto">
+              <Button
+                variant="outline"
+                onClick={() => setArmarioParaObservacao(null)}
+                className="rounded-xl"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => {
+                  if (armarioParaObservacao) {
+                    observacaoMutation.mutate({
+                      id: armarioParaObservacao.id,
+                      observacao: observacaoTexto,
+                    });
+                  }
+                }}
+                disabled={observacaoMutation.isPending}
+                className="rounded-xl font-medium"
+              >
+                {observacaoMutation.isPending ? "Salvando..." : "Salvar Observação"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

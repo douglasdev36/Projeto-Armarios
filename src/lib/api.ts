@@ -18,6 +18,7 @@ export interface ArmarioItem {
   numero: string;
   bloco?: string;
   status: 'livre' | 'ocupado' | 'manutencao';
+  observacao?: string | null;
   dataDistribuicao?: string | null;
   renovado?: boolean;
   dataRenovacao?: string | null;
@@ -25,6 +26,27 @@ export interface ArmarioItem {
   turma?: string | null;
   contato?: string | null;
   alunoId?: string | null;
+}
+
+export interface RelatoriosHistoricoResponse {
+  sorteios: Array<{
+    id: string;
+    alunoNome: string;
+    armario: string;
+    turma?: string | null;
+    nomeSorteio?: string | null;
+    createdAt: string;
+  }>;
+  movimentacoes: Array<{
+    id: string;
+    armarioNumero: string;
+    alunoNome?: string | null;
+    tipo: string;
+    armarioAnterior?: string | null;
+    responsavelEmail?: string | null;
+    detalhes?: string | null;
+    createdAt: string;
+  }>;
 }
 
 export interface ConfiguracaoRenovacao {
@@ -345,6 +367,22 @@ export const api = {
       body: JSON.stringify({ bloco, inicio, fim }),
     });
     return handleResponse<{ message: string; count?: number; totalIntervalo?: number }>(res);
+  },
+
+  async updateObservacaoArmario(id: string, observacao: string) {
+    const res = await fetch(`${API_URL}/armarios/${id}/observacao`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ observacao }),
+    });
+    return handleResponse<{ message: string; armario: ArmarioItem }>(res);
+  },
+
+  async getRelatoriosHistorico(): Promise<RelatoriosHistoricoResponse> {
+    const res = await fetch(`${API_URL}/relatorios/historico`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<RelatoriosHistoricoResponse>(res);
   },
 
   // --- RENOVAÇÃO DE ARMÁRIOS ---

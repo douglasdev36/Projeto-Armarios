@@ -242,7 +242,7 @@ export default function Sorteio() {
                   <Badge className="bg-emerald-600 text-white mb-2">Sorteio Concluído</Badge>
                   <h2 className="text-2xl font-bold text-foreground">{nomeSorteio}</h2>
                   <p className="text-sm text-muted-foreground">
-                    {resultados.length} alunos foram contemplados e vinculados aos seus armários no PostgreSQL.
+                    {resultados.length} alunos foram contemplados e vinculados aos seus armários com sucesso.
                   </p>
                 </div>
                 <Button

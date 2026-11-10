@@ -149,7 +149,7 @@ export default function Turmas() {
                   <DialogHeader>
                     <DialogTitle className="text-xl">Criar Nova Turma</DialogTitle>
                     <DialogDescription>
-                      Preencha as informações para cadastrar uma nova turma no PostgreSQL.
+                      Preencha as informações para cadastrar uma nova turma no sistema.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
@@ -281,7 +281,7 @@ export default function Turmas() {
 
           {/* Cards Grid */}
           {isLoading ? (
-            <p className="text-center py-12 text-muted-foreground">Carregando turmas do PostgreSQL...</p>
+            <p className="text-center py-12 text-muted-foreground">Carregando turmas...</p>
           ) : filteredTurmas.length === 0 ? (
             <p className="text-center py-12 text-muted-foreground">Nenhuma turma cadastrada no banco.</p>
           ) : (

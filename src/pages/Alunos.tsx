@@ -300,7 +300,7 @@ export default function Alunos() {
                   {isLoading ? (
                     <TableRow>
                       <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
-                        Carregando alunos do PostgreSQL...
+                        Carregando alunos...
                       </TableCell>
                     </TableRow>
                   ) : filteredAlunos.length === 0 ? (

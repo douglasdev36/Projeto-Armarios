@@ -852,22 +852,37 @@ app.post('/api/armarios/gerar-lote', async (req, res) => {
       return res.status(400).json({ error: 'Intervalo inválido' });
     }
 
-    const criados = [];
-    for (let i = start; i <= end; i++) {
-      const numero = `${bloco}-${i}`;
-      try {
-        const item = await prisma.armario.upsert({
-          where: { numero },
-          update: {},
-          create: { numero, bloco, status: 'livre' },
-        });
-        criados.push(item);
-      } catch {
-        // Ignora duplicados
-      }
+    if (end - start > 1000) {
+      return res.status(400).json({ error: 'O intervalo máximo permitido por vez é de 1000 armários' });
     }
 
-    res.json({ message: `${criados.length} armários criados/verificados com sucesso`, criados });
+    const blocoLimpo = String(bloco || '').trim().toUpperCase();
+    if (!blocoLimpo) {
+      return res.status(400).json({ error: 'Bloco/Prefixo é obrigatório' });
+    }
+
+    const dados: { numero: string; bloco: string; status: string }[] = [];
+    for (let i = start; i <= end; i++) {
+      dados.push({
+        numero: `${blocoLimpo}-${i}`,
+        bloco: blocoLimpo,
+        status: 'livre',
+      });
+    }
+
+    const result = await prisma.armario.createMany({
+      data: dados,
+      skipDuplicates: true,
+    });
+
+    res.json({
+      message:
+        result.count > 0
+          ? `${result.count} armário(s) criado(s) com sucesso!`
+          : `Os armários desse intervalo já estavam cadastrados.`,
+      count: result.count,
+      totalIntervalo: dados.length,
+    });
   } catch (error) {
     console.error('Error batch creating armarios:', error);
     res.status(500).json({ error: 'Erro ao gerar armários em lote' });

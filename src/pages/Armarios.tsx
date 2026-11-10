@@ -245,7 +245,7 @@ export default function Armarios() {
                   {isLoading ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
-                        Carregando armários do PostgreSQL...
+                        Carregando armários...
                       </TableCell>
                     </TableRow>
                   ) : filteredArmarios.length === 0 ? (

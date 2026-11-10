@@ -54,7 +54,7 @@ export function GerenciarArmariosDialog() {
       queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
 
       toast({
-        title: "Bloco criado no PostgreSQL!",
+        title: "Armários criados com sucesso!",
         description: res.message || `Armários ${novoPrefixo}-${inicio} até ${novoPrefixo}-${fim} cadastrados.`,
       });
 
@@ -84,7 +84,7 @@ export function GerenciarArmariosDialog() {
         <DialogHeader>
           <DialogTitle className="text-xl">Gerenciar Blocos de Armários</DialogTitle>
           <DialogDescription>
-            Gere blocos de armários em lote diretamente no banco PostgreSQL (ex: Bloco D, de 1 a 20).
+            Gere blocos de armários em lote no sistema (ex: Bloco D, de 1 a 20).
           </DialogDescription>
         </DialogHeader>
 

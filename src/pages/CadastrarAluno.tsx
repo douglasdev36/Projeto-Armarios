@@ -41,7 +41,7 @@ export default function CadastrarAluno() {
   const createMutation = useMutation({
     mutationFn: api.createAluno,
     onSuccess: () => {
-      toast.success("Aluno cadastrado no PostgreSQL com sucesso!");
+      toast.success("Aluno cadastrado com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["alunos"] });
       queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
       queryClient.invalidateQueries({ queryKey: ["turmas"] });

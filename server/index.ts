@@ -1753,18 +1753,32 @@ app.get('/api/chaves/listar', async (req, res) => {
     const where: any = {};
 
     if (status && status !== 'todos') {
-      where.status = status;
+      if (status === 'atrasada') {
+        where.status = 'pendente';
+        where.prazoDevolucao = { lt: new Date() };
+      } else {
+        where.status = status;
+      }
     }
 
     if (search && typeof search === 'string') {
       where.OR = [
         { alunoNome: { contains: search, mode: 'insensitive' } },
         { armarioNumero: { contains: search, mode: 'insensitive' } },
+        { aluno: { matricula: { contains: search, mode: 'insensitive' } } },
       ];
     }
 
     const emprestimos = await prisma.emprestimoChave.findMany({
       where,
+      include: {
+        aluno: {
+          select: {
+            matricula: true,
+            turma: { select: { nome: true } },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -1776,6 +1790,8 @@ app.get('/api/chaves/listar', async (req, res) => {
       }
       return {
         ...e,
+        alunoMatricula: e.aluno?.matricula || null,
+        alunoTurma: e.aluno?.turma?.nome || null,
         estadoVisual: estado,
       };
     });

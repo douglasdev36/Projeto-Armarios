@@ -43,7 +43,9 @@ export function AppSidebar() {
   const { data: alertasChaves } = useQuery({
     queryKey: ["chavesAlertas"],
     queryFn: api.getAlertasChaves,
+    staleTime: 30000,
     refetchInterval: 60000,
+    refetchOnWindowFocus: true,
   });
 
   const handleLogout = () => {
@@ -60,6 +62,7 @@ export function AppSidebar() {
   };
 
   const atrasadasCount = alertasChaves?.atrasadasCount ?? 0;
+  const proximasCount = alertasChaves?.proximasCount ?? 0;
 
   return (
     <aside className="flex flex-col w-64 min-h-screen bg-sidebar border-r border-sidebar-border">
@@ -97,23 +100,57 @@ export function AppSidebar() {
       <nav className="flex-1 p-4 space-y-1">
         {menuItems.map((item) => {
           const isActive = location.pathname === item.path;
+          const temAtrasoChave = !!item.showKeyAlerts && atrasadasCount > 0;
+          const temProximaChave = !!item.showKeyAlerts && !temAtrasoChave && proximasCount > 0;
+
           return (
             <Link
               key={item.path}
               to={item.path}
+              title={
+                temAtrasoChave
+                  ? `${atrasadasCount} chave(s) não devolvida(s) no prazo!`
+                  : temProximaChave
+                    ? `${proximasCount} chave(s) próxima(s) do prazo de devolução`
+                    : undefined
+              }
               className={cn(
                 "sidebar-item flex items-center justify-between",
                 isActive && "sidebar-item-active"
               )}
             >
               <div className="flex items-center gap-3">
-                <item.icon className="h-5 w-5" />
+                <div className="relative shrink-0">
+                  <item.icon
+                    className={cn(
+                      "h-5 w-5",
+                      temAtrasoChave && "text-rose-500",
+                      temProximaChave && "text-amber-500"
+                    )}
+                  />
+                  {temAtrasoChave && (
+                    <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75" />
+                      <span className="relative inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-rose-600 text-[9px] font-black text-white ring-2 ring-sidebar">
+                        !
+                      </span>
+                    </span>
+                  )}
+                  {temProximaChave && (
+                    <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-sidebar" />
+                  )}
+                </div>
                 <span>{item.label}</span>
               </div>
 
-              {item.showKeyAlerts && atrasadasCount > 0 && (
-                <span className="bg-rose-500 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
+              {temAtrasoChave && (
+                <span className="bg-rose-600 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
                   {atrasadasCount}
+                </span>
+              )}
+              {temProximaChave && (
+                <span className="bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[11px] font-bold px-1.5 py-0.5 rounded-full">
+                  {proximasCount}
                 </span>
               )}
             </Link>

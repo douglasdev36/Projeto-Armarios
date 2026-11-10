@@ -105,6 +105,8 @@ export interface EmprestimoChaveItem {
   id: string;
   alunoId: string;
   alunoNome: string;
+  alunoMatricula?: string | null;
+  alunoTurma?: string | null;
   armarioNumero: string;
   dataEmprestimo: string;
   prazoDevolucao: string;

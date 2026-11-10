@@ -10,7 +10,8 @@ import {
   UserCheck, 
   ArrowDownLeft,
   Calendar,
-  ShieldAlert
+  ShieldAlert,
+  GraduationCap
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -62,8 +63,11 @@ export default function EmprestimoChaves() {
   
   // Modal de Novo Empréstimo
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [alunoSearchTerm, setAlunoSearchTerm] = useState("");
+  const [selectedTurmaId, setSelectedTurmaId] = useState<string>("todas");
   const [selectedAlunoId, setSelectedAlunoId] = useState<string>("");
   const [armarioNumero, setArmarioNumero] = useState<string>("");
+  const [armarioSearchTerm, setArmarioSearchTerm] = useState("");
   const [observacoes, setObservacoes] = useState("");
 
   // Confirmação de Devolução
@@ -73,6 +77,7 @@ export default function EmprestimoChaves() {
   const { data: alertasData } = useQuery({
     queryKey: ["chavesAlertas"],
     queryFn: api.getAlertasChaves,
+    staleTime: 30000,
   });
 
   // Lista de Empréstimos (busca por status e filtra busca por texto localmente)
@@ -86,14 +91,22 @@ export default function EmprestimoChaves() {
     const q = searchTerm.toLowerCase();
     return (
       item.alunoNome.toLowerCase().includes(q) ||
+      (item.alunoMatricula || "").toLowerCase().includes(q) ||
       item.armarioNumero.toLowerCase().includes(q)
     );
   });
 
   // Lista de todos os alunos ativos
-  const { data: alunos = [] } = useQuery({
+  const { data: alunos = [], isLoading: isLoadingAlunos } = useQuery({
     queryKey: ["alunos"],
     queryFn: () => api.getAlunos(),
+    enabled: isDialogOpen,
+  });
+
+  // Lista de turmas para filtro rápido no modal
+  const { data: turmas = [] } = useQuery({
+    queryKey: ["turmas"],
+    queryFn: api.getTurmas,
     enabled: isDialogOpen,
   });
 
@@ -103,6 +116,39 @@ export default function EmprestimoChaves() {
     queryFn: api.getArmarios,
     enabled: isDialogOpen,
   });
+
+  useEffect(() => {
+    if (!isDialogOpen) {
+      setAlunoSearchTerm("");
+      setSelectedTurmaId("todas");
+      setSelectedAlunoId("");
+      setArmarioNumero("");
+      setArmarioSearchTerm("");
+      setObservacoes("");
+    }
+  }, [isDialogOpen]);
+
+  const filteredModalAlunos = alunos.filter((a) => {
+    const matchesTurma = selectedTurmaId === "todas" || a.turmaId === selectedTurmaId;
+    if (!matchesTurma) return false;
+    const q = alunoSearchTerm.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (a.nome || "").toLowerCase().includes(q) ||
+      (a.matricula || "").toLowerCase().includes(q)
+    );
+  });
+
+  const filteredModalArmarios = [...armarios]
+    .sort((a, b) => a.numero.localeCompare(b.numero, undefined, { numeric: true, sensitivity: "base" }))
+    .filter((arm) => {
+      const q = armarioSearchTerm.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        arm.numero.toLowerCase().includes(q) ||
+        (arm.bloco || "").toLowerCase().includes(q)
+      );
+    });
 
   const selectedAlunoObj = alunos.find((a) => a.id === selectedAlunoId);
 
@@ -182,43 +228,100 @@ export default function EmprestimoChaves() {
                 </Button>
               </DialogTrigger>
 
-              <DialogContent className="max-w-md rounded-3xl">
+              <DialogContent className="max-w-lg rounded-3xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="text-xl font-bold flex items-center gap-2">
                     <Key className="h-5 w-5 text-primary" />
                     Registrar Empréstimo de Chave
                   </DialogTitle>
                   <DialogDescription>
-                    Selecione o aluno que receberá a cópia. O prazo regulamentar é de <strong>2 dias</strong>.
+                    Pesquise por nome ou matrícula para selecionar o aluno. O prazo regulamentar é de <strong>2 dias</strong>.
                   </DialogDescription>
                 </DialogHeader>
 
-                <div className="space-y-4 py-3">
-                  <div className="space-y-1.5">
+                <div className="space-y-4 py-2">
+                  <div className="space-y-2">
                     <Label className="text-xs font-semibold text-muted-foreground">Aluno Beneficiário</Label>
-                    <Select value={selectedAlunoId} onValueChange={setSelectedAlunoId}>
-                      <SelectTrigger className="h-11 rounded-xl">
-                        <SelectValue placeholder="Selecione o aluno" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {alunos.length === 0 ? (
-                          <div className="p-2 text-xs text-muted-foreground text-center">Nenhum aluno cadastrado</div>
-                        ) : (
-                          alunos.map((a) => (
-                            <SelectItem key={a.id} value={a.id}>
-                              {a.nome} {a.armario ? `(Armário ${a.armario})` : `(Sem armário fixo)`}
+
+                    <div className="flex items-center gap-2">
+                      <GraduationCap className="h-4 w-4 text-primary shrink-0" />
+                      <Select
+                        value={selectedTurmaId}
+                        onValueChange={(val) => {
+                          setSelectedTurmaId(val);
+                          setSelectedAlunoId("");
+                        }}
+                      >
+                        <SelectTrigger className="h-10 rounded-xl flex-1">
+                          <SelectValue placeholder="Filtrar por turma" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="todas">Todas as Turmas</SelectItem>
+                          {turmas.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>
+                              {t.nome}
                             </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Pesquisar aluno por nome ou matrícula..."
+                        className="pl-9 h-10 rounded-xl"
+                        value={alunoSearchTerm}
+                        onChange={(e) => setAlunoSearchTerm(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="max-h-[190px] overflow-y-auto border border-border rounded-xl p-1.5 space-y-1 divide-y divide-border/40">
+                      {isLoadingAlunos ? (
+                        <p className="p-4 text-center text-xs text-muted-foreground">
+                          Carregando alunos...
+                        </p>
+                      ) : filteredModalAlunos.length === 0 ? (
+                        <p className="p-4 text-center text-xs text-muted-foreground">
+                          Nenhum aluno encontrado para os filtros informados.
+                        </p>
+                      ) : (
+                        filteredModalAlunos.map((a) => {
+                          const isSelected = selectedAlunoId === a.id;
+                          return (
+                            <div
+                              key={a.id}
+                              onClick={() => setSelectedAlunoId(a.id)}
+                              className={`p-2.5 rounded-lg flex items-center justify-between gap-2 cursor-pointer transition-colors ${
+                                isSelected
+                                  ? "bg-primary/10 border border-primary/40 text-foreground"
+                                  : "hover:bg-muted/50 text-muted-foreground"
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-foreground truncate">{a.nome}</p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  Matrícula: {a.matricula} • {a.turma || "Sem Turma"}{" "}
+                                  {a.armario ? `• Armário ${a.armario}` : "• Sem armário fixo"}
+                                </p>
+                              </div>
+                              {isSelected && (
+                                <Badge className="shrink-0 gap-1 text-[11px] h-5">
+                                  <UserCheck className="h-3 w-3" /> Selecionado
+                                </Badge>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
 
-                  {/* Se o aluno tem armário, exibe fixo; se não tem, permite escolher qual armário */}
+                  {/* Se o aluno tem armário, exibe fixo; se não tem, permite buscar e escolher qual armário */}
                   {selectedAlunoObj && (
                     <div className="space-y-1.5 animate-fade-in">
                       <Label className="text-xs font-semibold text-muted-foreground">
-                        Armário da Chave Emprestada
+                        Armário da Chave Emprestada ({selectedAlunoObj.nome})
                       </Label>
                       {alunoTemArmario ? (
                         <div className="p-3 bg-muted/40 rounded-xl border border-border text-sm flex items-center justify-between">
@@ -226,18 +329,35 @@ export default function EmprestimoChaves() {
                           <Badge className="font-bold">{selectedAlunoObj.armario}</Badge>
                         </div>
                       ) : (
-                        <Select value={armarioNumero} onValueChange={setArmarioNumero}>
-                          <SelectTrigger className="h-11 rounded-xl">
-                            <SelectValue placeholder="Escolha o número do armário" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {armarios.map((arm) => (
-                              <SelectItem key={arm.id} value={arm.numero}>
-                                Armário {arm.numero} {arm.bloco ? `(Bloco ${arm.bloco})` : ""}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="space-y-2">
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                            <Input
+                              placeholder="Filtrar armário por número ou bloco (ex: A-1)..."
+                              className="pl-8 h-9 rounded-xl text-xs"
+                              value={armarioSearchTerm}
+                              onChange={(e) => setArmarioSearchTerm(e.target.value)}
+                            />
+                          </div>
+                          <Select value={armarioNumero} onValueChange={setArmarioNumero}>
+                            <SelectTrigger className="h-11 rounded-xl">
+                              <SelectValue placeholder="Escolha o número do armário" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {filteredModalArmarios.length === 0 ? (
+                                <div className="p-2 text-xs text-muted-foreground text-center">
+                                  Nenhum armário encontrado
+                                </div>
+                              ) : (
+                                filteredModalArmarios.map((arm) => (
+                                  <SelectItem key={arm.id} value={arm.numero}>
+                                    Armário {arm.numero} {arm.bloco ? `(Bloco ${arm.bloco})` : ""}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       )}
                     </div>
                   )}
@@ -283,10 +403,12 @@ export default function EmprestimoChaves() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Alerta de Atrasadas */}
             <div
-              className={`p-5 rounded-3xl border shadow-sm flex items-center justify-between transition-colors ${
+              onClick={() => setStatusFilter("atrasada")}
+              title="Clique para filtrar somente as chaves atrasadas"
+              className={`p-5 rounded-3xl border shadow-sm flex items-center justify-between transition-colors cursor-pointer ${
                 totalAtrasadas > 0
-                  ? "bg-rose-500/10 border-rose-300 dark:border-rose-900/50 text-rose-800 dark:text-rose-300"
-                  : "bg-card border-border"
+                  ? "bg-rose-500/10 border-rose-300 dark:border-rose-900/50 text-rose-800 dark:text-rose-300 hover:bg-rose-500/15"
+                  : "bg-card border-border hover:bg-muted/30"
               }`}
             >
               <div>
@@ -345,14 +467,14 @@ export default function EmprestimoChaves() {
             <div className="relative w-full sm:max-w-md">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por aluno ou número do armário..."
+                placeholder="Buscar por aluno, matrícula ou armário..."
                 className="pl-10 h-11 rounded-xl"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
 
-            <div className="flex gap-1.5 w-full sm:w-auto">
+            <div className="flex flex-wrap gap-1.5 w-full sm:w-auto">
               <Button
                 size="sm"
                 variant={statusFilter === "todos" ? "default" : "outline"}
@@ -368,6 +490,23 @@ export default function EmprestimoChaves() {
                 className="rounded-xl h-9 text-xs"
               >
                 Pendentes
+              </Button>
+              <Button
+                size="sm"
+                variant={statusFilter === "atrasada" ? "destructive" : "outline"}
+                onClick={() => setStatusFilter("atrasada")}
+                className={`rounded-xl h-9 text-xs gap-1.5 ${
+                  statusFilter !== "atrasada" && totalAtrasadas > 0
+                    ? "border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                    : ""
+                }`}
+              >
+                Atrasadas
+                {totalAtrasadas > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-600 text-white">
+                    {totalAtrasadas}
+                  </span>
+                )}
               </Button>
               <Button
                 size="sm"
@@ -414,9 +553,23 @@ export default function EmprestimoChaves() {
                       const isAtrasada = item.estadoVisual === "atrasada";
 
                       return (
-                        <TableRow key={item.id} className="hover:bg-muted/40 transition-colors">
+                        <TableRow
+                          key={item.id}
+                          className={`transition-colors ${
+                            isAtrasada
+                              ? "bg-rose-500/5 hover:bg-rose-500/10"
+                              : "hover:bg-muted/40"
+                          }`}
+                        >
                           <TableCell className="font-bold text-foreground">
-                            {item.alunoNome}
+                            <div>{item.alunoNome}</div>
+                            {(item.alunoMatricula || item.alunoTurma) && (
+                              <span className="block text-xs font-normal text-muted-foreground">
+                                {item.alunoMatricula ? `Matrícula: ${item.alunoMatricula}` : ""}
+                                {item.alunoMatricula && item.alunoTurma ? " • " : ""}
+                                {item.alunoTurma || ""}
+                              </span>
+                            )}
                             {item.observacoes && (
                               <span className="block text-xs font-normal text-muted-foreground italic">
                                 "{item.observacoes}"

@@ -92,12 +92,20 @@ export default function Armarios() {
     },
   });
 
+  const getArmarioBloco = (armario: ArmarioItem) =>
+    (armario.bloco || armario.numero.split("-")[0] || "").toUpperCase();
+
   // Lista única de blocos para filtro com ordenação alfabética natural (A, B, C...)
   const blocosDisponiveis = Array.from(
-    new Set(armariosData.map((a) => a.bloco).filter(Boolean))
-  ).sort((a, b) => (a as string).localeCompare(b as string, undefined, { numeric: true, sensitivity: "base" })) as string[];
+    new Set(armariosData.map((a) => getArmarioBloco(a)).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
 
-  const filteredArmarios = armariosData
+  const armariosNoBloco =
+    selectedBloco === "todos"
+      ? armariosData
+      : armariosData.filter((armario) => getArmarioBloco(armario) === selectedBloco);
+
+  const filteredArmarios = armariosNoBloco
     .filter((armario) => {
       const searchLower = searchTerm.toLowerCase();
       const matchesSearch =
@@ -111,14 +119,11 @@ export default function Armarios() {
         (filter === "pendentes_renovacao" && armario.status === "ocupado" && !armario.renovado) ||
         (filter === "renovados" && armario.status === "ocupado" && armario.renovado);
 
-      const matchesBloco =
-        selectedBloco === "todos" || armario.bloco === selectedBloco;
-
-      return matchesSearch && matchesStatus && matchesBloco;
+      return matchesSearch && matchesStatus;
     })
     .sort((a, b) => {
-      const blocoA = (a.bloco || a.numero.split("-")[0] || "").toUpperCase();
-      const blocoB = (b.bloco || b.numero.split("-")[0] || "").toUpperCase();
+      const blocoA = getArmarioBloco(a);
+      const blocoB = getArmarioBloco(b);
       if (blocoA !== blocoB) {
         return blocoA.localeCompare(blocoB, undefined, { numeric: true, sensitivity: "base" });
       }
@@ -126,10 +131,17 @@ export default function Armarios() {
       return a.numero.localeCompare(b.numero, undefined, { numeric: true, sensitivity: "base" });
     });
 
+  // Totais globais (para os cards superiores)
   const totalLivres = armariosData.filter((a) => a.status === "livre").length;
   const totalOcupados = armariosData.filter((a) => a.status === "ocupado").length;
   const totalRenovados = armariosData.filter((a) => a.status === "ocupado" && a.renovado).length;
   const totalPendentesRenovacao = armariosData.filter((a) => a.status === "ocupado" && !a.renovado).length;
+
+  // Totais do bloco selecionado (para os botões de filtro)
+  const blocoLivres = armariosNoBloco.filter((a) => a.status === "livre").length;
+  const blocoOcupados = armariosNoBloco.filter((a) => a.status === "ocupado").length;
+  const blocoRenovados = armariosNoBloco.filter((a) => a.status === "ocupado" && a.renovado).length;
+  const blocoPendentesRenovacao = armariosNoBloco.filter((a) => a.status === "ocupado" && !a.renovado).length;
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -290,7 +302,7 @@ export default function Armarios() {
                 onClick={() => setFilter("todos")}
                 className="rounded-xl h-9 text-xs"
               >
-                Todos ({armariosData.length})
+                Todos ({armariosNoBloco.length})
               </Button>
               <Button
                 size="sm"
@@ -298,7 +310,7 @@ export default function Armarios() {
                 onClick={() => setFilter("livres")}
                 className="rounded-xl h-9 text-xs text-emerald-600 dark:text-emerald-400"
               >
-                Livres ({totalLivres})
+                Livres ({blocoLivres})
               </Button>
               <Button
                 size="sm"
@@ -306,7 +318,7 @@ export default function Armarios() {
                 onClick={() => setFilter("ocupados")}
                 className="rounded-xl h-9 text-xs text-rose-600 dark:text-rose-400"
               >
-                Ocupados ({totalOcupados})
+                Ocupados ({blocoOcupados})
               </Button>
               {renovacaoConfig?.ativa && (
                 <>
@@ -317,7 +329,7 @@ export default function Armarios() {
                     className="rounded-xl h-9 text-xs text-amber-600 dark:text-amber-400"
                   >
                     <Clock className="h-3.5 w-3.5 mr-1" />
-                    Precisam Renovar ({totalPendentesRenovacao})
+                    Precisam Renovar ({blocoPendentesRenovacao})
                   </Button>
                   <Button
                     size="sm"
@@ -326,7 +338,7 @@ export default function Armarios() {
                     className="rounded-xl h-9 text-xs text-emerald-600 dark:text-emerald-400"
                   >
                     <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                    Renovados ({totalRenovados})
+                    Renovados ({blocoRenovados})
                   </Button>
                 </>
               )}
@@ -357,7 +369,19 @@ export default function Armarios() {
                   ) : filteredArmarios.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
-                        Nenhum armário encontrado com os filtros selecionados.
+                        <div className="flex flex-col items-center gap-2">
+                          <span>Nenhum armário encontrado com os filtros selecionados.</span>
+                          {selectedBloco !== "todos" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedBloco("todos")}
+                              className="rounded-xl text-xs"
+                            >
+                              Ver em Todos os Blocos
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : (

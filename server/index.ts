@@ -1169,6 +1169,127 @@ app.post('/api/alunos', async (req, res) => {
   }
 });
 
+// Importação de alunos em lote (.xlsx)
+app.post('/api/alunos/importar-lote', async (req, res) => {
+  try {
+    const { turmaId, alunos, atualizarExistentes } = req.body;
+
+    if (!Array.isArray(alunos) || alunos.length === 0) {
+      return res.status(400).json({ error: 'Nenhum aluno válido enviado para importação' });
+    }
+
+    let turmaFixaId: string | null = null;
+    if (turmaId && turmaId !== 'sem_turma' && turmaId !== 'planilha') {
+      const turmaExiste = await prisma.turma.findUnique({ where: { id: turmaId } });
+      if (!turmaExiste) {
+        return res.status(404).json({ error: 'Turma selecionada não encontrada' });
+      }
+      turmaFixaId = turmaExiste.id;
+    }
+
+    const todasTurmas = turmaFixaId ? [] : await prisma.turma.findMany();
+    const mapaTurmasPorNome = new Map(
+      todasTurmas.map((t) => [t.nome.trim().toLowerCase(), t.id])
+    );
+
+    // Filtra e deduplica por matrícula dentro do próprio arquivo
+    const mapaAlunos = new Map<
+      string,
+      { nome: string; matricula: string; email: string | null; telefone: string | null; turmaId: string | null }
+    >();
+
+    for (const item of alunos) {
+      const nome = String(item?.nome || '').trim();
+      const matricula = String(item?.matricula || '').trim();
+      if (!nome || !matricula) continue;
+
+      let resolvedTurmaId = turmaFixaId;
+      if (!resolvedTurmaId && turmaId === 'planilha' && item?.turmaNome) {
+        resolvedTurmaId = mapaTurmasPorNome.get(String(item.turmaNome).trim().toLowerCase()) || null;
+      }
+
+      mapaAlunos.set(matricula, {
+        nome,
+        matricula,
+        email: item?.email ? String(item.email).trim() : null,
+        telefone: item?.telefone ? String(item.telefone).trim() : null,
+        turmaId: resolvedTurmaId,
+      });
+    }
+
+    const listaLimpa = Array.from(mapaAlunos.values());
+    if (listaLimpa.length === 0) {
+      return res.status(400).json({ error: 'Nenhum aluno possui Nome e Matrícula preenchidos' });
+    }
+
+    const matriculas = listaLimpa.map((a) => a.matricula);
+    const existentes = await prisma.aluno.findMany({
+      where: { matricula: { in: matriculas } },
+      select: { id: true, matricula: true },
+    });
+    const existentesSet = new Set(existentes.map((e) => e.matricula));
+
+    const novos = listaLimpa.filter((a) => !existentesSet.has(a.matricula));
+    const jaCadastrados = listaLimpa.filter((a) => existentesSet.has(a.matricula));
+
+    let importados = 0;
+    let atualizados = 0;
+    let ignorados = 0;
+
+    if (novos.length > 0) {
+      const created = await prisma.aluno.createMany({
+        data: novos.map((a) => ({
+          nome: a.nome,
+          matricula: a.matricula,
+          email: a.email,
+          telefone: a.telefone,
+          turmaId: a.turmaId,
+          ativo: true,
+        })),
+        skipDuplicates: true,
+      });
+      importados = created.count;
+    }
+
+    if (jaCadastrados.length > 0) {
+      if (atualizarExistentes) {
+        await prisma.$transaction(
+          jaCadastrados.map((a) =>
+            prisma.aluno.update({
+              where: { matricula: a.matricula },
+              data: {
+                nome: a.nome,
+                ativo: true,
+                ...(a.email !== null ? { email: a.email } : {}),
+                ...(a.telefone !== null ? { telefone: a.telefone } : {}),
+                ...(a.turmaId !== null ? { turmaId: a.turmaId } : {}),
+              },
+            })
+          )
+        );
+        atualizados = jaCadastrados.length;
+      } else {
+        ignorados = jaCadastrados.length;
+      }
+    }
+
+    const partes = [];
+    if (importados > 0) partes.push(`${importados} cadastrado(s)`);
+    if (atualizados > 0) partes.push(`${atualizados} atualizado(s)`);
+    if (ignorados > 0) partes.push(`${ignorados} já existente(s) ignorado(s)`);
+
+    res.json({
+      message: partes.length > 0 ? `Importação concluída: ${partes.join(', ')}.` : 'Nenhum aluno alterado.',
+      importados,
+      atualizados,
+      ignorados,
+    });
+  } catch (error) {
+    console.error('Error importing alunos:', error);
+    res.status(500).json({ error: 'Erro ao importar alunos em lote' });
+  }
+});
+
 app.delete('/api/alunos/:id', async (req, res) => {
   try {
     const { id } = req.params;

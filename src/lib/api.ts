@@ -412,6 +412,30 @@ export const api = {
     return handleResponse<AlunoItem>(res);
   },
 
+  async importarAlunosLote(data: {
+    turmaId?: string;
+    atualizarExistentes?: boolean;
+    alunos: Array<{
+      nome: string;
+      matricula: string;
+      email?: string;
+      telefone?: string;
+      turmaNome?: string;
+    }>;
+  }) {
+    const res = await fetch(`${API_URL}/alunos/importar-lote`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<{
+      message: string;
+      importados: number;
+      atualizados: number;
+      ignorados: number;
+    }>(res);
+  },
+
   async deleteAluno(id: string) {
     const res = await fetch(`${API_URL}/alunos/${id}`, {
       method: 'DELETE',

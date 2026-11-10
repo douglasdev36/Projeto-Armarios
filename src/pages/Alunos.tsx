@@ -60,7 +60,7 @@ import { api, AlunoItem, TurmaItem } from "@/lib/api";
 import { toast } from "sonner";
 
 type CursoFilterKey = "todos" | "administracao" | "eletromecanica" | "informatica" | string;
-type SerieFilterKey = "todo_curso" | "1" | "2" | "3";
+type SerieFilterKey = string; // "todo_curso" | "1" | "2" | "3" | `turma:${id}`
 
 function normalizeText(value: string): string {
   return value
@@ -72,9 +72,9 @@ function normalizeText(value: string): string {
 
 function getTurmaCursoKey(turma: TurmaItem): string {
   const texto = normalizeText(`${turma.curso || ""} ${turma.nome || ""}`);
-  if (texto.includes("administrac") || /\badm\b/.test(texto)) return "administracao";
-  if (texto.includes("eletromec") || /\beletro\b/.test(texto)) return "eletromecanica";
-  if (texto.includes("informatic") || /\binfo\b/.test(texto)) return "informatica";
+  if (texto.includes("administrac") || /\badm\b/.test(texto) || /\b1?adm\b|\b2?adm\b|\b3?adm\b/.test(texto)) return "administracao";
+  if (texto.includes("eletromec") || /\beletro/.test(texto) || /\b[123]el\b/.test(texto)) return "eletromecanica";
+  if (texto.includes("informatic") || /\binfo/.test(texto) || /\b[123]inf/.test(texto)) return "informatica";
   const cursoLimpo = turma.curso?.trim();
   if (cursoLimpo && normalizeText(cursoLimpo) !== "ensino regular") {
     return normalizeText(cursoLimpo);
@@ -82,18 +82,49 @@ function getTurmaCursoKey(turma: TurmaItem): string {
   return "outros";
 }
 
-function getTurmaSerieKey(turma: TurmaItem): "1" | "2" | "3" | "outra" {
-  const texto = normalizeText(`${turma.serie || ""} ${turma.nome || ""}`);
-  if (/(?:^|\s)1\s*[oº°]/.test(texto) || /(?:^|\s)1\s*(?:ano|serie)\b/.test(texto) || /(?:^|\s)1(?:\s|$|-)/.test(texto) || texto.includes("primeiro")) {
+function detectSerieInText(raw: string): "1" | "2" | "3" | null {
+  const texto = normalizeText(raw);
+  if (!texto) return null;
+
+  // Remove anos letivos de 4 dígitos (ex: 2024, 2025, 2026) para não confundir
+  const semAnoLetivo = texto.replace(/\b20\d{2}\b/g, " ");
+
+  // 1º / 1ª / 1° / 1o / 1a / 1A / 1INFO / Primeiro / I / códigos 101-199
+  if (
+    semAnoLetivo.includes("primeiro") ||
+    /(?:^|[^0-9])1(?![0-9])/.test(semAnoLetivo) ||
+    /(?:^|\s)1\d{2}(?:\s|$|-)/.test(semAnoLetivo) ||
+    /\bi\b/.test(semAnoLetivo)
+  ) {
     return "1";
   }
-  if (/(?:^|\s)2\s*[oº°]/.test(texto) || /(?:^|\s)2\s*(?:ano|serie)\b/.test(texto) || /(?:^|\s)2(?:\s|$|-)/.test(texto) || texto.includes("segundo")) {
+
+  // 2º / 2ª / 2° / 2o / 2a / 2A / 2INFO / Segundo / II / códigos 201-299
+  if (
+    semAnoLetivo.includes("segundo") ||
+    /(?:^|[^0-9])2(?![0-9])/.test(semAnoLetivo) ||
+    /(?:^|\s)2\d{2}(?:\s|$|-)/.test(semAnoLetivo) ||
+    /\bii\b/.test(semAnoLetivo)
+  ) {
     return "2";
   }
-  if (/(?:^|\s)3\s*[oº°]/.test(texto) || /(?:^|\s)3\s*(?:ano|serie)\b/.test(texto) || /(?:^|\s)3(?:\s|$|-)/.test(texto) || texto.includes("terceiro")) {
+
+  // 3º / 3ª / 3° / 3o / 3a / 3A / 3INFO / Terceiro / III / códigos 301-399
+  if (
+    semAnoLetivo.includes("terceiro") ||
+    /(?:^|[^0-9])3(?![0-9])/.test(semAnoLetivo) ||
+    /(?:^|\s)3\d{2}(?:\s|$|-)/.test(semAnoLetivo) ||
+    /\biii\b/.test(semAnoLetivo)
+  ) {
     return "3";
   }
-  return "outra";
+
+  return null;
+}
+
+function getTurmaSerieKey(turma: TurmaItem): "1" | "2" | "3" | "outra" {
+  // Prioriza o nome da turma (mais específico) e usa turma.serie como fallback
+  return detectSerieInText(turma.nome || "") || detectSerieInText(turma.serie || "") || "outra";
 }
 
 export default function Alunos() {
@@ -187,6 +218,43 @@ export default function Alunos() {
     setSelectedAlunoIds([]);
   };
 
+  const getAlunoCursoESerie = (aluno: AlunoItem) => {
+    const turmaObj = aluno.turmaId ? turmasById.get(aluno.turmaId) : undefined;
+    const textoFallback = normalizeText(aluno.turma || "");
+
+    const cursoAluno = turmaObj
+      ? getTurmaCursoKey(turmaObj)
+      : textoFallback.includes("administrac") || /\badm\b/.test(textoFallback)
+      ? "administracao"
+      : textoFallback.includes("eletromec") || /\beletro/.test(textoFallback)
+      ? "eletromecanica"
+      : textoFallback.includes("informatic") || /\binfo/.test(textoFallback)
+      ? "informatica"
+      : "outros";
+
+    const serieAluno = turmaObj
+      ? getTurmaSerieKey(turmaObj)
+      : detectSerieInText(aluno.turma || "") || "outra";
+
+    return { cursoAluno, serieAluno };
+  };
+
+  // Alunos pertencentes ao curso selecionado (para contagem nas abas de 1º, 2º, 3º Ano)
+  const alunosDoCursoSelecionado =
+    selectedCurso === "todos"
+      ? alunosData
+      : alunosData.filter((a) => getAlunoCursoESerie(a).cursoAluno === selectedCurso);
+
+  const countSerie = (s: "1" | "2" | "3") =>
+    alunosDoCursoSelecionado.filter((a) => getAlunoCursoESerie(a).serieAluno === s).length;
+
+  const turmasOutrasDoCurso =
+    selectedCurso === "todos"
+      ? []
+      : turmas.filter(
+          (t) => getTurmaCursoKey(t) === selectedCurso && getTurmaSerieKey(t) === "outra"
+        );
+
   const filteredAlunos = alunosData.filter((aluno) => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch =
@@ -196,26 +264,13 @@ export default function Alunos() {
     if (!matchesSearch) return false;
     if (selectedCurso === "todos") return true;
 
-    const turmaObj = aluno.turmaId ? turmasById.get(aluno.turmaId) : undefined;
-    const textoFallback = normalizeText(aluno.turma || "");
-
-    const cursoAluno = turmaObj
-      ? getTurmaCursoKey(turmaObj)
-      : textoFallback.includes("administrac") || /\badm\b/.test(textoFallback)
-      ? "administracao"
-      : textoFallback.includes("eletromec")
-      ? "eletromecanica"
-      : textoFallback.includes("informatic") || /\binfo\b/.test(textoFallback)
-      ? "informatica"
-      : "outros";
-
+    const { cursoAluno, serieAluno } = getAlunoCursoESerie(aluno);
     if (cursoAluno !== selectedCurso) return false;
 
     if (selectedSerie === "todo_curso") return true;
-
-    const serieAluno = turmaObj
-      ? getTurmaSerieKey(turmaObj)
-      : getTurmaSerieKey({ id: "", nome: aluno.turma || "", anoLetivo: "", totalAlunos: 0, armariosOcupados: 0, armariosLivres: 0 });
+    if (selectedSerie.startsWith("turma:")) {
+      return aluno.turmaId === selectedSerie.replace("turma:", "");
+    }
 
     return serieAluno === selectedSerie;
   });
@@ -338,10 +393,14 @@ export default function Alunos() {
                   Ano / Turma:
                 </span>
                 {[
-                  { key: "todo_curso" as SerieFilterKey, label: "Todo o Curso" },
-                  { key: "1" as SerieFilterKey, label: "1º Ano" },
-                  { key: "2" as SerieFilterKey, label: "2º Ano" },
-                  { key: "3" as SerieFilterKey, label: "3º Ano" },
+                  { key: "todo_curso", label: `Todo o Curso (${alunosDoCursoSelecionado.length})` },
+                  { key: "1", label: `1º Ano (${countSerie("1")})` },
+                  { key: "2", label: `2º Ano (${countSerie("2")})` },
+                  { key: "3", label: `3º Ano (${countSerie("3")})` },
+                  ...turmasOutrasDoCurso.map((t) => ({
+                    key: `turma:${t.id}`,
+                    label: `${t.nome} (${t.totalAlunos})`,
+                  })),
                 ].map((s) => (
                   <Button
                     key={s.key}

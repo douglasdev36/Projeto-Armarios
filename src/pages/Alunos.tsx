@@ -70,11 +70,18 @@ function normalizeText(value: string): string {
     .trim();
 }
 
+function detectCursoFromText(raw: string): string {
+  const texto = normalizeText(raw);
+  if (!texto) return "outros";
+  if (texto.includes("admin") || /(?:^|[^a-z])adm/.test(texto)) return "administracao";
+  if (texto.includes("eletro") || /(?:^|[^a-z])[123]?el\b/.test(texto)) return "eletromecanica";
+  if (texto.includes("info") || /(?:^|[^a-z])[123]?inf/.test(texto)) return "informatica";
+  return "outros";
+}
+
 function getTurmaCursoKey(turma: TurmaItem): string {
-  const texto = normalizeText(`${turma.curso || ""} ${turma.nome || ""}`);
-  if (texto.includes("administrac") || /\badm\b/.test(texto) || /\b1?adm\b|\b2?adm\b|\b3?adm\b/.test(texto)) return "administracao";
-  if (texto.includes("eletromec") || /\beletro/.test(texto) || /\b[123]el\b/.test(texto)) return "eletromecanica";
-  if (texto.includes("informatic") || /\binfo/.test(texto) || /\b[123]inf/.test(texto)) return "informatica";
+  const detected = detectCursoFromText(`${turma.curso || ""} ${turma.nome || ""}`);
+  if (detected !== "outros") return detected;
   const cursoLimpo = turma.curso?.trim();
   if (cursoLimpo && normalizeText(cursoLimpo) !== "ensino regular") {
     return normalizeText(cursoLimpo);
@@ -220,17 +227,10 @@ export default function Alunos() {
 
   const getAlunoCursoESerie = (aluno: AlunoItem) => {
     const turmaObj = aluno.turmaId ? turmasById.get(aluno.turmaId) : undefined;
-    const textoFallback = normalizeText(aluno.turma || "");
 
     const cursoAluno = turmaObj
       ? getTurmaCursoKey(turmaObj)
-      : textoFallback.includes("administrac") || /\badm\b/.test(textoFallback)
-      ? "administracao"
-      : textoFallback.includes("eletromec") || /\beletro/.test(textoFallback)
-      ? "eletromecanica"
-      : textoFallback.includes("informatic") || /\binfo/.test(textoFallback)
-      ? "informatica"
-      : "outros";
+      : detectCursoFromText(aluno.turma || "");
 
     const serieAluno = turmaObj
       ? getTurmaSerieKey(turmaObj)
@@ -238,6 +238,11 @@ export default function Alunos() {
 
     return { cursoAluno, serieAluno };
   };
+
+  const countCurso = (cursoKey: string) =>
+    alunosData.filter((a) => getAlunoCursoESerie(a).cursoAluno === cursoKey).length;
+
+  const countOutrosCursos = countCurso("outros");
 
   // Alunos pertencentes ao curso selecionado (para contagem nas abas de 1º, 2º, 3º Ano)
   const alunosDoCursoSelecionado =
@@ -369,7 +374,7 @@ export default function Alunos() {
                   onClick={() => handleSelectCurso("todos")}
                   className="rounded-xl h-9 text-xs"
                 >
-                  Todos os Cursos
+                  Todos os Cursos ({alunosData.length})
                 </Button>
                 {cursosPrincipais.map((c) => (
                   <Button
@@ -379,9 +384,19 @@ export default function Alunos() {
                     onClick={() => handleSelectCurso(c.key)}
                     className="rounded-xl h-9 text-xs"
                   >
-                    {c.label}
+                    {c.label} ({countCurso(c.key)})
                   </Button>
                 ))}
+                {countOutrosCursos > 0 && (
+                  <Button
+                    size="sm"
+                    variant={selectedCurso === "outros" ? "default" : "outline"}
+                    onClick={() => handleSelectCurso("outros")}
+                    className="rounded-xl h-9 text-xs"
+                  >
+                    Outras Turmas ({countOutrosCursos})
+                  </Button>
+                )}
               </div>
             </div>
 

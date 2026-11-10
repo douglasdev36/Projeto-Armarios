@@ -25,6 +25,7 @@ model Aluno {
   matricula        String            @unique
   telefone         String?
   email            String?
+  observacao       String?
   ativo            Boolean           @default(true)
   turmaId          String?
   turma            Turma?            @relation(fields: [turmaId], references: [id], onDelete: SetNull)

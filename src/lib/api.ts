@@ -64,6 +64,7 @@ export interface AlunoItem {
   matricula: string;
   telefone: string;
   email: string;
+  observacao?: string | null;
   turma: string;
   turmaId?: string | null;
   armario?: string | null;
@@ -490,6 +491,15 @@ export const api = {
       body: JSON.stringify(data),
     });
     return handleResponse<AlunoItem>(res);
+  },
+
+  async updateObservacaoAluno(id: string, observacao: string) {
+    const res = await fetch(`${API_URL}/alunos/${id}/observacao`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ observacao }),
+    });
+    return handleResponse<{ message: string; aluno: AlunoItem }>(res);
   },
 
   // --- SORTEIO COMBINADO ---

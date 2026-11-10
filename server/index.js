@@ -1218,6 +1218,7 @@ app.get('/api/alunos', async (req, res) => {
       matricula: aluno.matricula,
       telefone: aluno.telefone || '—',
       email: aluno.email || '—',
+      observacao: aluno.observacao || null,
       turma: aluno.turma?.nome || '—',
       turmaId: aluno.turmaId,
       armario: aluno.armario?.numero || null,
@@ -1385,6 +1386,36 @@ app.delete('/api/alunos/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting aluno:', error);
     res.status(500).json({ error: 'Erro ao remover aluno' });
+  }
+});
+
+// Atualizar observação de um aluno
+app.put('/api/alunos/:id/observacao', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { observacao } = req.body;
+
+    const aluno = await prisma.aluno.findUnique({ where: { id } });
+    if (!aluno) {
+      return res.status(404).json({ error: 'Aluno não encontrado' });
+    }
+
+    const textoLimpo = typeof observacao === 'string' && observacao.trim() ? observacao.trim() : null;
+
+    const atualizado = await prisma.aluno.update({
+      where: { id },
+      data: { observacao: textoLimpo },
+    });
+
+    res.json({
+      message: textoLimpo
+        ? `Observação salva para ${aluno.nome}.`
+        : `Observação removida de ${aluno.nome}.`,
+      aluno: atualizado,
+    });
+  } catch (error) {
+    console.error('Error updating aluno observacao:', error);
+    res.status(500).json({ error: 'Erro ao salvar observação do aluno' });
   }
 });
 

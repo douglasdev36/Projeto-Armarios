@@ -111,7 +111,7 @@ export const exportAlunosRelatorio = (format: 'pdf' | 'excel', alunos: AlunoItem
   const ordenados = [...alunos].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
   if (format === 'pdf') {
-    const headers = ['Nome', 'Matrícula', 'Turma', 'Armário', 'Telefone', 'E-mail'];
+    const headers = ['Nome', 'Matrícula', 'Turma', 'Armário', 'Telefone', 'E-mail', 'Observação'];
     const data = ordenados.map((a) => [
       a.nome,
       a.matricula,
@@ -119,6 +119,7 @@ export const exportAlunosRelatorio = (format: 'pdf' | 'excel', alunos: AlunoItem
       a.armario || 'Sem armário',
       a.telefone || '-',
       a.email || '-',
+      a.observacao || '-',
     ]);
     exportToPDF('Relatório de Alunos', headers, data, 'relatorio-alunos');
   } else {
@@ -129,6 +130,7 @@ export const exportAlunosRelatorio = (format: 'pdf' | 'excel', alunos: AlunoItem
       'Armário': a.armario || 'Sem armário',
       'Telefone': a.telefone || '-',
       'E-mail': a.email || '-',
+      'Observação': a.observacao || '-',
     }));
     exportToExcel(excelData, 'Alunos', 'relatorio-alunos');
   }

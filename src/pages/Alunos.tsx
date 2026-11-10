@@ -11,7 +11,8 @@ import {
   AlertCircle,
   GraduationCap,
   RefreshCw,
-  Archive
+  Archive,
+  StickyNote
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -53,6 +54,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { LockerBadge } from "@/components/LockerBadge";
 import { useNavigate } from "react-router-dom";
 import { ImportAlunosDialog } from "@/components/ImportAlunosDialog";
@@ -145,11 +147,13 @@ export default function Alunos() {
   const [selectedSerie, setSelectedSerie] = useState<SerieFilterKey>("todo_curso");
   const [selectedAlunoIds, setSelectedAlunoIds] = useState<string[]>([]);
   
-  // Modais de Edição, Armário e Exclusão
+  // Modais de Edição, Armário, Observação e Exclusão
   const [editingAluno, setEditingAluno] = useState<AlunoItem | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [alunoParaExcluir, setAlunoParaExcluir] = useState<AlunoItem | null>(null);
   const [alunoParaArmario, setAlunoParaArmario] = useState<AlunoItem | null>(null);
+  const [alunoParaObservacao, setAlunoParaObservacao] = useState<AlunoItem | null>(null);
+  const [observacaoTexto, setObservacaoTexto] = useState("");
 
   // Modal Rápido de Empréstimo de Chave
   const [alunoParaChave, setAlunoParaChave] = useState<AlunoItem | null>(null);
@@ -205,6 +209,20 @@ export default function Alunos() {
     },
     onError: (err: any) => {
       toast.error(err.message || "Erro ao registrar empréstimo de chave");
+    },
+  });
+
+  const observacaoMutation = useMutation({
+    mutationFn: ({ id, observacao }: { id: string; observacao: string }) =>
+      api.updateObservacaoAluno(id, observacao),
+    onSuccess: (data) => {
+      toast.success(data.message || "Observação salva!");
+      queryClient.invalidateQueries({ queryKey: ["alunos"] });
+      setAlunoParaObservacao(null);
+      setObservacaoTexto("");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Erro ao salvar observação");
     },
   });
 
@@ -497,7 +515,7 @@ export default function Alunos() {
                     <TableHead>Telefone</TableHead>
                     <TableHead>E-mail</TableHead>
                     <TableHead>Armário Atual</TableHead>
-                    <TableHead className="text-right w-[160px]">Ações</TableHead>
+                    <TableHead className="text-right w-[190px]">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -547,7 +565,15 @@ export default function Alunos() {
                           </TableCell>
 
                           <TableCell className="font-semibold text-foreground">
-                            {aluno.nome}
+                            <div>{aluno.nome}</div>
+                            {aluno.observacao && (
+                              <div className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-md">
+                                <StickyNote className="h-3 w-3 shrink-0" />
+                                <span className="truncate max-w-[190px]" title={aluno.observacao}>
+                                  {aluno.observacao}
+                                </span>
+                              </div>
+                            )}
                           </TableCell>
 
                           <TableCell className="text-muted-foreground text-sm">
@@ -606,6 +632,23 @@ export default function Alunos() {
                                 title="Emprestar chave para este aluno"
                               >
                                 <Key className="h-4 w-4" />
+                              </Button>
+
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={`h-8 w-8 rounded-lg ${
+                                  aluno.observacao
+                                    ? "text-amber-600 bg-amber-500/10 hover:bg-amber-500/20"
+                                    : "text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"
+                                }`}
+                                onClick={() => {
+                                  setAlunoParaObservacao(aluno);
+                                  setObservacaoTexto(aluno.observacao || "");
+                                }}
+                                title={aluno.observacao ? `Observação: ${aluno.observacao}` : "Adicionar observação"}
+                              >
+                                <StickyNote className="h-4 w-4" />
                               </Button>
 
                               <Button
@@ -717,6 +760,76 @@ export default function Alunos() {
             >
               {emprestarChaveMutation.isPending ? "Registrando..." : "Confirmar Empréstimo"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Observação do Aluno */}
+      <Dialog open={!!alunoParaObservacao} onOpenChange={(val) => !val && setAlunoParaObservacao(null)}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <StickyNote className="h-5 w-5 text-amber-600" />
+              Observação — {alunoParaObservacao?.nome}
+            </DialogTitle>
+            <DialogDescription>
+              Registre avisos ou informações importantes sobre este aluno (ex: pendência de chave, autorização, troca solicitada).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 py-2">
+            <Label htmlFor="obs-aluno" className="text-xs font-semibold text-muted-foreground">
+              Observação
+            </Label>
+            <Textarea
+              id="obs-aluno"
+              placeholder="Ex: Aluno perdeu a chave reserva, aguardando retorno..."
+              className="rounded-xl min-h-[100px]"
+              value={observacaoTexto}
+              onChange={(e) => setObservacaoTexto(e.target.value)}
+            />
+          </div>
+
+          <DialogFooter className="flex flex-wrap justify-between gap-2">
+            {alunoParaObservacao?.observacao && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="rounded-xl text-rose-600 hover:text-rose-700 hover:bg-rose-500/10 mr-auto"
+                disabled={observacaoMutation.isPending}
+                onClick={() =>
+                  observacaoMutation.mutate({
+                    id: alunoParaObservacao.id,
+                    observacao: "",
+                  })
+                }
+              >
+                Remover Observação
+              </Button>
+            )}
+            <div className="flex gap-2 ml-auto">
+              <Button
+                variant="outline"
+                onClick={() => setAlunoParaObservacao(null)}
+                className="rounded-xl"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => {
+                  if (alunoParaObservacao) {
+                    observacaoMutation.mutate({
+                      id: alunoParaObservacao.id,
+                      observacao: observacaoTexto,
+                    });
+                  }
+                }}
+                disabled={observacaoMutation.isPending}
+                className="rounded-xl font-medium"
+              >
+                {observacaoMutation.isPending ? "Salvando..." : "Salvar Observação"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

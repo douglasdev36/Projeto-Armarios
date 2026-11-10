@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Trash2, Unlock, UserX, AlertCircle, Archive, ShieldAlert } from "lucide-react";
+import { Search, Trash2, Unlock, UserX, AlertCircle, Archive, ShieldAlert, RefreshCw, CheckCircle2, Clock } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Button } from "@/components/ui/button";
@@ -27,10 +27,11 @@ import { GerenciarArmariosDialog } from "@/components/GerenciarArmariosDialog";
 import { DistribuirArmarioModal } from "@/components/DistribuirArmarioModal";
 import { TrocarArmarioModal } from "@/components/TrocarArmarioModal";
 import { ExcluirArmariosLoteDialog } from "@/components/ExcluirArmariosLoteDialog";
+import { RenovacaoArmariosDialog } from "@/components/RenovacaoArmariosDialog";
 import { api, ArmarioItem } from "@/lib/api";
 import { toast } from "sonner";
 
-type FilterType = "todos" | "livres" | "ocupados";
+type FilterType = "todos" | "livres" | "ocupados" | "pendentes_renovacao" | "renovados";
 
 export default function Armarios() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -38,12 +39,30 @@ export default function Armarios() {
   const [selectedBloco, setSelectedBloco] = useState<string>("todos");
   const [armarioParaLiberar, setArmarioParaLiberar] = useState<ArmarioItem | null>(null);
   const [armarioParaExcluir, setArmarioParaExcluir] = useState<ArmarioItem | null>(null);
+  const [renovacaoDialogOpen, setRenovacaoDialogOpen] = useState(false);
 
   const queryClient = useQueryClient();
 
   const { data: armariosData = [], isLoading } = useQuery({
     queryKey: ["armarios"],
     queryFn: api.getArmarios,
+  });
+
+  const { data: renovacaoConfig } = useQuery({
+    queryKey: ["renovacao-config"],
+    queryFn: api.getRenovacaoConfig,
+  });
+
+  const renovarMutation = useMutation({
+    mutationFn: (id: string) => api.renovarArmario(id),
+    onSuccess: (data) => {
+      toast.success(data.message || "Armário renovado com sucesso!");
+      queryClient.invalidateQueries({ queryKey: ["armarios"] });
+      queryClient.invalidateQueries({ queryKey: ["renovacao-config"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Erro ao renovar armário");
+    },
   });
 
   const liberarMutation = useMutation({
@@ -88,7 +107,9 @@ export default function Armarios() {
       const matchesStatus =
         filter === "todos" ||
         (filter === "livres" && armario.status === "livre") ||
-        (filter === "ocupados" && armario.status === "ocupado");
+        (filter === "ocupados" && armario.status === "ocupado") ||
+        (filter === "pendentes_renovacao" && armario.status === "ocupado" && !armario.renovado) ||
+        (filter === "renovados" && armario.status === "ocupado" && armario.renovado);
 
       const matchesBloco =
         selectedBloco === "todos" || armario.bloco === selectedBloco;
@@ -107,6 +128,8 @@ export default function Armarios() {
 
   const totalLivres = armariosData.filter((a) => a.status === "livre").length;
   const totalOcupados = armariosData.filter((a) => a.status === "ocupado").length;
+  const totalRenovados = armariosData.filter((a) => a.status === "ocupado" && a.renovado).length;
+  const totalPendentesRenovacao = armariosData.filter((a) => a.status === "ocupado" && !a.renovado).length;
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -123,10 +146,56 @@ export default function Armarios() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
+              <RenovacaoArmariosDialog />
               <ExcluirArmariosLoteDialog />
               <GerenciarArmariosDialog />
             </div>
           </div>
+
+          {/* Banner de Campanha de Renovação Ativa */}
+          {renovacaoConfig?.ativa && (
+            <div className="mb-6 p-4 rounded-2xl bg-primary/5 border border-primary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-primary/15 text-primary shrink-0">
+                  <RefreshCw className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-sm text-foreground">
+                      {renovacaoConfig.titulo || "Renovação de Armários"} — Em Andamento
+                    </h3>
+                    <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white text-[10px]">Ativa</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Período:{" "}
+                    <strong>
+                      {renovacaoConfig.dataInicio ? new Date(renovacaoConfig.dataInicio).toLocaleDateString("pt-BR") : "—"}
+                    </strong>{" "}
+                    até{" "}
+                    <strong>
+                      {renovacaoConfig.dataFim ? new Date(renovacaoConfig.dataFim).toLocaleDateString("pt-BR") : "—"}
+                    </strong>{" "}
+                    • <span className="text-emerald-600 dark:text-emerald-400 font-medium">{totalRenovados} renovado(s)</span>{" "}
+                    • <span className="text-amber-600 dark:text-amber-400 font-medium">{totalPendentesRenovacao} pendente(s)</span>
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setRenovacaoDialogOpen(true)}
+                className="rounded-xl shrink-0 gap-1.5 border-primary/30 hover:bg-primary/10"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Painel de Renovações
+              </Button>
+            </div>
+          )}
+
+          <RenovacaoArmariosDialog
+            externalOpen={renovacaoDialogOpen}
+            onExternalOpenChange={setRenovacaoDialogOpen}
+          />
 
           {/* Status Metric Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
@@ -199,7 +268,7 @@ export default function Armarios() {
             )}
 
             {/* Filtro por Status */}
-            <div className="flex gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
               <Button
                 size="sm"
                 variant={filter === "todos" ? "default" : "outline"}
@@ -224,6 +293,28 @@ export default function Armarios() {
               >
                 Ocupados ({totalOcupados})
               </Button>
+              {renovacaoConfig?.ativa && (
+                <>
+                  <Button
+                    size="sm"
+                    variant={filter === "pendentes_renovacao" ? "default" : "outline"}
+                    onClick={() => setFilter("pendentes_renovacao")}
+                    className="rounded-xl h-9 text-xs text-amber-600 dark:text-amber-400"
+                  >
+                    <Clock className="h-3.5 w-3.5 mr-1" />
+                    Precisam Renovar ({totalPendentesRenovacao})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={filter === "renovados" ? "default" : "outline"}
+                    onClick={() => setFilter("renovados")}
+                    className="rounded-xl h-9 text-xs text-emerald-600 dark:text-emerald-400"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                    Renovados ({totalRenovados})
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
@@ -234,11 +325,11 @@ export default function Armarios() {
                 <TableHeader className="sticky top-0 bg-card z-10 shadow-[0_1px_0_rgba(0,0,0,0.1)]">
                   <TableRow>
                     <TableHead className="w-[120px]">Armário</TableHead>
-                    <TableHead className="w-[120px]">Status</TableHead>
+                    <TableHead className="w-[170px]">Status</TableHead>
                     <TableHead>Aluno Responsável</TableHead>
                     <TableHead>Turma</TableHead>
                     <TableHead>Contato</TableHead>
-                    <TableHead className="text-right w-[240px]">Ações</TableHead>
+                    <TableHead className="text-right w-[290px]">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -268,17 +359,32 @@ export default function Armarios() {
                             )}
                           </TableCell>
 
-                          {/* Indicadores Visuais Distintos (Verde para livre, Vermelho para ocupado) */}
+                          {/* Indicadores Visuais Distintos (Verde para livre, Vermelho para ocupado + status de renovação) */}
                           <TableCell>
-                            {isLivre ? (
-                              <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white font-medium text-xs">
-                                Livre
-                              </Badge>
-                            ) : (
-                              <Badge variant="destructive" className="font-medium text-xs">
-                                Ocupado
-                              </Badge>
-                            )}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {isLivre ? (
+                                <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white font-medium text-xs">
+                                  Livre
+                                </Badge>
+                              ) : (
+                                <>
+                                  <Badge variant="destructive" className="font-medium text-xs">
+                                    Ocupado
+                                  </Badge>
+                                  {renovacaoConfig?.ativa && (
+                                    armario.renovado ? (
+                                      <Badge className="bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/15 font-medium text-[11px]">
+                                        Renovado
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/15 font-medium text-[11px]">
+                                        Renovar
+                                      </Badge>
+                                    )
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </TableCell>
 
                           <TableCell className={armario.aluno ? "font-semibold text-foreground" : "text-muted-foreground"}>
@@ -314,6 +420,19 @@ export default function Armarios() {
                                 </>
                               ) : (
                                 <>
+                                  {renovacaoConfig?.ativa && !armario.renovado && (
+                                    <Button
+                                      size="sm"
+                                      className="h-8 gap-1 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
+                                      title="Confirmar renovação deste armário"
+                                      disabled={renovarMutation.isPending}
+                                      onClick={() => renovarMutation.mutate(armario.id)}
+                                    >
+                                      <CheckCircle2 className="h-3.5 w-3.5" />
+                                      Renovar
+                                    </Button>
+                                  )}
+
                                   {/* 3.4. Troca de armário */}
                                   <TrocarArmarioModal armarioAtual={armario} />
 

@@ -40,10 +40,21 @@ model Armario {
   bloco            String?
   status           String    @default("livre") // "livre", "ocupado", "manutencao"
   dataDistribuicao DateTime?
+  renovado         Boolean   @default(false)
+  dataRenovacao    DateTime?
   alunoId          String?   @unique
   aluno            Aluno?    @relation(fields: [alunoId], references: [id], onDelete: SetNull)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+}
+
+model ConfiguracaoRenovacao {
+  id         String    @id @default("atual")
+  ativa      Boolean   @default(false)
+  titulo     String    @default("Renovação de Armários")
+  dataInicio DateTime?
+  dataFim    DateTime?
+  updatedAt  DateTime  @updatedAt
 }
 
 model EmprestimoChave {

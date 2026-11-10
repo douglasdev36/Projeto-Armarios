@@ -536,6 +536,8 @@ app.get('/api/armarios', async (req, res) => {
       bloco: a.bloco,
       status: a.status,
       dataDistribuicao: a.dataDistribuicao,
+      renovado: a.renovado,
+      dataRenovacao: a.dataRenovacao,
       aluno: a.aluno?.nome || null,
       turma: a.aluno?.turma?.nome || null,
       contato: a.aluno?.telefone || a.aluno?.email || null,
@@ -595,6 +597,8 @@ app.post('/api/armarios/distribuir', async (req, res) => {
           status: 'ocupado',
           alunoId,
           dataDistribuicao: now,
+          renovado: false,
+          dataRenovacao: null,
         },
       }),
       prisma.historicoArmario.create({
@@ -639,6 +643,8 @@ app.post('/api/armarios/liberar', async (req, res) => {
           status: 'livre',
           alunoId: null,
           dataDistribuicao: null,
+          renovado: false,
+          dataRenovacao: null,
         },
       }),
       prisma.historicoArmario.create({
@@ -875,6 +881,224 @@ app.post('/api/armarios/gerar-lote', async (req, res) => {
   } catch (error) {
     console.error('Error batch creating armarios:', error);
     res.status(500).json({ error: 'Erro ao gerar armários em lote' });
+  }
+});
+
+// ==========================================
+// MÓDULO DE RENOVAÇÃO DE ARMÁRIOS
+// ==========================================
+
+app.get('/api/renovacao', async (req, res) => {
+  try {
+    let config = await prisma.configuracaoRenovacao.findUnique({
+      where: { id: 'atual' },
+    });
+
+    if (!config) {
+      config = await prisma.configuracaoRenovacao.create({
+        data: {
+          id: 'atual',
+          ativa: false,
+          titulo: 'Renovação de Armários',
+        },
+      });
+    }
+
+    res.json(config);
+  } catch (error) {
+    console.error('Error fetching renovacao config:', error);
+    res.status(500).json({ error: 'Erro ao buscar configuração de renovação' });
+  }
+});
+
+app.post('/api/renovacao/config', async (req, res) => {
+  try {
+    const { ativa, titulo, dataInicio, dataFim, resetarRenovacoes } = req.body;
+
+    let inicioDate = null;
+    let fimDate = null;
+
+    if (ativa) {
+      if (!dataInicio || !dataFim) {
+        return res.status(400).json({ error: 'Informe a data de início e a data de término da renovação.' });
+      }
+      inicioDate = new Date(`${dataInicio}T00:00:00`);
+      fimDate = new Date(`${dataFim}T23:59:59`);
+
+      if (isNaN(inicioDate.getTime()) || isNaN(fimDate.getTime())) {
+        return res.status(400).json({ error: 'Datas inválidas.' });
+      }
+      if (inicioDate > fimDate) {
+        return res.status(400).json({ error: 'A data de término não pode ser anterior à data de início.' });
+      }
+    } else {
+      if (dataInicio) inicioDate = new Date(`${dataInicio}T00:00:00`);
+      if (dataFim) fimDate = new Date(`${dataFim}T23:59:59`);
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      if (ativa && resetarRenovacoes) {
+        await tx.armario.updateMany({
+          data: {
+            renovado: false,
+            dataRenovacao: null,
+          },
+        });
+      }
+
+      return tx.configuracaoRenovacao.upsert({
+        where: { id: 'atual' },
+        update: {
+          ativa: Boolean(ativa),
+          titulo: titulo?.trim() || 'Renovação de Armários',
+          dataInicio: inicioDate,
+          dataFim: fimDate,
+        },
+        create: {
+          id: 'atual',
+          ativa: Boolean(ativa),
+          titulo: titulo?.trim() || 'Renovação de Armários',
+          dataInicio: inicioDate,
+          dataFim: fimDate,
+        },
+      });
+    });
+
+    res.json({
+      message: updated.ativa
+        ? 'Campanha de renovação ativada com sucesso!'
+        : 'Campanha de renovação encerrada.',
+      config: updated,
+    });
+  } catch (error) {
+    console.error('Error saving renovacao config:', error);
+    res.status(500).json({ error: 'Erro ao atualizar configuração de renovação' });
+  }
+});
+
+app.post('/api/armarios/:id/renovar', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const armario = await prisma.armario.findUnique({
+      where: { id },
+      include: { aluno: true },
+    });
+
+    if (!armario) {
+      return res.status(404).json({ error: 'Armário não encontrado' });
+    }
+    if (armario.status !== 'ocupado' || !armario.alunoId) {
+      return res.status(400).json({ error: 'Apenas armários ocupados podem ser renovados' });
+    }
+
+    const now = new Date();
+    const updated = await prisma.$transaction(async (tx) => {
+      const arm = await tx.armario.update({
+        where: { id },
+        data: {
+          renovado: true,
+          dataRenovacao: now,
+        },
+      });
+
+      await tx.historicoArmario.create({
+        data: {
+          armarioNumero: armario.numero,
+          alunoId: armario.alunoId,
+          alunoNome: armario.aluno?.nome || 'Aluno',
+          tipo: 'renovacao',
+          responsavelEmail: req.user?.email,
+          detalhes: `Armário ${armario.numero} renovado para ${armario.aluno?.nome || 'Aluno'}`,
+        },
+      });
+
+      return arm;
+    });
+
+    res.json({
+      message: `Armário ${armario.numero} renovado com sucesso!`,
+      armario: updated,
+    });
+  } catch (error) {
+    console.error('Error renewing armario:', error);
+    res.status(500).json({ error: 'Erro ao renovar armário' });
+  }
+});
+
+app.post('/api/armarios/:id/desfazer-renovacao', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const armario = await prisma.armario.findUnique({ where: { id } });
+
+    if (!armario) {
+      return res.status(404).json({ error: 'Armário não encontrado' });
+    }
+
+    const updated = await prisma.armario.update({
+      where: { id },
+      data: {
+        renovado: false,
+        dataRenovacao: null,
+      },
+    });
+
+    res.json({
+      message: `Renovação do armário ${armario.numero} desfeita.`,
+      armario: updated,
+    });
+  } catch (error) {
+    console.error('Error undoing armario renewal:', error);
+    res.status(500).json({ error: 'Erro ao desfazer renovação do armário' });
+  }
+});
+
+app.post('/api/renovacao/liberar-nao-renovados', async (req, res) => {
+  try {
+    const naoRenovados = await prisma.armario.findMany({
+      where: {
+        status: 'ocupado',
+        renovado: false,
+      },
+      include: { aluno: true },
+    });
+
+    if (naoRenovados.length === 0) {
+      return res.json({ message: 'Não há armários pendentes para liberar.', liberados: 0 });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.armario.updateMany({
+        where: {
+          id: { in: naoRenovados.map((a) => a.id) },
+        },
+        data: {
+          status: 'livre',
+          alunoId: null,
+          dataDistribuicao: null,
+          renovado: false,
+          dataRenovacao: null,
+        },
+      });
+
+      await tx.historicoArmario.createMany({
+        data: naoRenovados.map((a) => ({
+          armarioNumero: a.numero,
+          alunoId: a.alunoId,
+          alunoNome: a.aluno?.nome || 'Não identificado',
+          tipo: 'liberacao',
+          responsavelEmail: req.user?.email,
+          detalhes: `Armário liberado por não renovação no prazo (Aluno: ${a.aluno?.nome || 'N/A'})`,
+        })),
+      });
+    });
+
+    res.json({
+      message: `${naoRenovados.length} armário(s) não renovado(s) liberado(s) com sucesso!`,
+      liberados: naoRenovados.length,
+    });
+  } catch (error) {
+    console.error('Error releasing unrenewed armarios:', error);
+    res.status(500).json({ error: 'Erro ao liberar armários não renovados' });
   }
 });
 

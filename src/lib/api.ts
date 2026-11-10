@@ -19,10 +19,21 @@ export interface ArmarioItem {
   bloco?: string;
   status: 'livre' | 'ocupado' | 'manutencao';
   dataDistribuicao?: string | null;
+  renovado?: boolean;
+  dataRenovacao?: string | null;
   aluno?: string | null;
   turma?: string | null;
   contato?: string | null;
   alunoId?: string | null;
+}
+
+export interface ConfiguracaoRenovacao {
+  id: string;
+  ativa: boolean;
+  titulo: string;
+  dataInicio?: string | null;
+  dataFim?: string | null;
+  updatedAt?: string;
 }
 
 export interface AlunoItem {
@@ -333,7 +344,54 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ bloco, inicio, fim }),
     });
-    return handleResponse<{ message: string; criados: any[] }>(res);
+    return handleResponse<{ message: string; count?: number; totalIntervalo?: number }>(res);
+  },
+
+  // --- RENOVAÇÃO DE ARMÁRIOS ---
+  async getRenovacaoConfig(): Promise<ConfiguracaoRenovacao> {
+    const res = await fetch(`${API_URL}/renovacao`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<ConfiguracaoRenovacao>(res);
+  },
+
+  async saveRenovacaoConfig(data: {
+    ativa: boolean;
+    titulo?: string;
+    dataInicio?: string;
+    dataFim?: string;
+    resetarRenovacoes?: boolean;
+  }) {
+    const res = await fetch(`${API_URL}/renovacao/config`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<{ message: string; config: ConfiguracaoRenovacao }>(res);
+  },
+
+  async renovarArmario(id: string) {
+    const res = await fetch(`${API_URL}/armarios/${id}/renovar`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<{ message: string; armario: any }>(res);
+  },
+
+  async desfazerRenovacaoArmario(id: string) {
+    const res = await fetch(`${API_URL}/armarios/${id}/desfazer-renovacao`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<{ message: string; armario: any }>(res);
+  },
+
+  async liberarNaoRenovados() {
+    const res = await fetch(`${API_URL}/renovacao/liberar-nao-renovados`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<{ message: string; liberados: number }>(res);
   },
 
   // --- ALUNOS ---

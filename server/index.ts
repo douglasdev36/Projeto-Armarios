@@ -638,9 +638,14 @@ app.post('/api/armarios/distribuir', async (req: AuthenticatedRequest, res) => {
 
     const now = new Date();
 
-    await prisma.$transaction([
-      prisma.armario.update({
-        where: { id: armarioId },
+    await prisma.$transaction(async (tx) => {
+      const jaTemArmario = await tx.armario.findFirst({ where: { alunoId } });
+      if (jaTemArmario) {
+        throw new Error(`STUDENT_HAS_LOCKER:${jaTemArmario.numero}`);
+      }
+
+      const updated = await tx.armario.updateMany({
+        where: { id: armarioId, status: 'livre', alunoId: null },
         data: {
           status: 'ocupado',
           alunoId,
@@ -648,8 +653,13 @@ app.post('/api/armarios/distribuir', async (req: AuthenticatedRequest, res) => {
           renovado: false,
           dataRenovacao: null,
         },
-      }),
-      prisma.historicoArmario.create({
+      });
+
+      if (updated.count === 0) {
+        throw new Error('LOCKER_BUSY');
+      }
+
+      await tx.historicoArmario.create({
         data: {
           armarioNumero: armario.numero,
           alunoId: aluno.id,
@@ -658,11 +668,18 @@ app.post('/api/armarios/distribuir', async (req: AuthenticatedRequest, res) => {
           responsavelEmail: req.user?.email,
           detalhes: 'Distribuição manual de armário',
         },
-      }),
-    ]);
+      });
+    });
 
     res.json({ message: `Armário ${armario.numero} distribuído com sucesso para ${aluno.nome}!` });
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.message === 'LOCKER_BUSY') {
+      return res.status(409).json({ error: 'Este armário acabou de ser ocupado por outro aluno.' });
+    }
+    if (typeof error?.message === 'string' && error.message.startsWith('STUDENT_HAS_LOCKER:')) {
+      const num = error.message.split(':')[1];
+      return res.status(400).json({ error: `Este aluno já possui o armário ativo ${num}.` });
+    }
     console.error('Error distributing locker:', error);
     res.status(500).json({ error: 'Erro ao distribuir armário' });
   }

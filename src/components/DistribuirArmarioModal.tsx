@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { UserPlus, Search, UserCheck } from "lucide-react";
+import { useState, useEffect } from "react";
+import { UserPlus, Search, UserCheck, GraduationCap } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
@@ -10,6 +10,13 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -23,12 +30,27 @@ interface DistribuirArmarioModalProps {
 export function DistribuirArmarioModal({ armario }: DistribuirArmarioModalProps) {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedTurmaId, setSelectedTurmaId] = useState<string>("todas");
   const [selectedAlunoId, setSelectedAlunoId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (open) {
+      setSearchTerm("");
+      setSelectedTurmaId("todas");
+      setSelectedAlunoId(null);
+    }
+  }, [open]);
 
   const { data: alunos = [], isLoading } = useQuery({
     queryKey: ["alunos"],
     queryFn: () => api.getAlunos(),
+    enabled: open,
+  });
+
+  const { data: turmas = [] } = useQuery({
+    queryKey: ["turmas"],
+    queryFn: api.getTurmas,
     enabled: open,
   });
 
@@ -38,21 +60,35 @@ export function DistribuirArmarioModal({ armario }: DistribuirArmarioModalProps)
       toast.success(data.message || `Armário ${armario.numero} distribuído!`);
       queryClient.invalidateQueries({ queryKey: ["armarios"] });
       queryClient.invalidateQueries({ queryKey: ["alunos"] });
+      queryClient.invalidateQueries({ queryKey: ["turmas"] });
       queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
       setOpen(false);
       setSelectedAlunoId(null);
     },
     onError: (err: any) => {
       toast.error(err.message || "Erro ao distribuir armário");
+      queryClient.invalidateQueries({ queryKey: ["armarios"] });
+      queryClient.invalidateQueries({ queryKey: ["alunos"] });
     },
   });
 
   // Filtra apenas alunos SEM armário
   const alunosSemArmario = alunos.filter((a) => !a.armarioId && !a.armario);
-  const filteredAlunos = alunosSemArmario.filter((a) =>
-    a.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    a.matricula.includes(searchTerm)
-  );
+
+  const countSemArmarioNaTurma = (turmaId: string) =>
+    alunosSemArmario.filter((a) => a.turmaId === turmaId).length;
+
+  const filteredAlunos = alunosSemArmario.filter((a) => {
+    const matchesTurma =
+      selectedTurmaId === "todas" || a.turmaId === selectedTurmaId;
+    if (!matchesTurma) return false;
+
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      (a.nome ?? "").toLowerCase().includes(searchLower) ||
+      (a.matricula ?? "").toLowerCase().includes(searchLower)
+    );
+  });
 
   const selectedAlunoObj = alunos.find((a) => a.id === selectedAlunoId);
 
@@ -81,14 +117,41 @@ export function DistribuirArmarioModal({ armario }: DistribuirArmarioModalProps)
           </DialogDescription>
         </DialogHeader>
 
-        <div className="relative my-2">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Pesquisar por nome ou matrícula..."
-            className="pl-9 h-10 rounded-xl"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="space-y-2.5 my-2">
+          <div className="flex items-center gap-2">
+            <GraduationCap className="h-4 w-4 text-primary shrink-0" />
+            <Select
+              value={selectedTurmaId}
+              onValueChange={(val) => {
+                setSelectedTurmaId(val);
+                setSelectedAlunoId(null);
+              }}
+            >
+              <SelectTrigger className="h-10 rounded-xl flex-1">
+                <SelectValue placeholder="Filtrar por turma" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">
+                  Todas as Turmas ({alunosSemArmario.length} disponíveis)
+                </SelectItem>
+                {turmas.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.nome} ({countSemArmarioNaTurma(t.id)} sem armário)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Pesquisar por nome ou matrícula..."
+              className="pl-9 h-10 rounded-xl"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
         </div>
 
         <div className="max-h-[240px] overflow-y-auto border border-border rounded-xl p-2 space-y-1 divide-y divide-border/50">

@@ -10,7 +10,8 @@ import {
   Square, 
   AlertCircle,
   GraduationCap,
-  RefreshCw
+  RefreshCw,
+  Archive
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -56,6 +57,7 @@ import { LockerBadge } from "@/components/LockerBadge";
 import { useNavigate } from "react-router-dom";
 import { ImportAlunosDialog } from "@/components/ImportAlunosDialog";
 import { EditarAlunoDialog } from "@/components/EditarAlunoDialog";
+import { AtribuirArmarioAlunoModal } from "@/components/AtribuirArmarioAlunoModal";
 import { api, AlunoItem, TurmaItem } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -143,10 +145,11 @@ export default function Alunos() {
   const [selectedSerie, setSelectedSerie] = useState<SerieFilterKey>("todo_curso");
   const [selectedAlunoIds, setSelectedAlunoIds] = useState<string[]>([]);
   
-  // Modais de Edição e Exclusão
+  // Modais de Edição, Armário e Exclusão
   const [editingAluno, setEditingAluno] = useState<AlunoItem | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [alunoParaExcluir, setAlunoParaExcluir] = useState<AlunoItem | null>(null);
+  const [alunoParaArmario, setAlunoParaArmario] = useState<AlunoItem | null>(null);
 
   // Modal Rápido de Empréstimo de Chave
   const [alunoParaChave, setAlunoParaChave] = useState<AlunoItem | null>(null);
@@ -571,6 +574,26 @@ export default function Alunos() {
 
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
+                              {/* Atribuir Armário */}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                disabled={temArmario}
+                                className={`h-8 w-8 rounded-lg ${
+                                  temArmario
+                                    ? "text-muted-foreground opacity-35 cursor-not-allowed"
+                                    : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                                }`}
+                                onClick={() => setAlunoParaArmario(aluno)}
+                                title={
+                                  temArmario
+                                    ? `Aluno já possui o armário ${aluno.armario}`
+                                    : "Atribuir armário para este aluno"
+                                }
+                              >
+                                <Archive className="h-4 w-4" />
+                              </Button>
+
                               {/* 6.1. Atalho Emprestar Chave */}
                               <Button
                                 variant="ghost"
@@ -622,6 +645,12 @@ export default function Alunos() {
             aluno={editingAluno}
             open={editDialogOpen}
             onOpenChange={setEditDialogOpen}
+          />
+
+          <AtribuirArmarioAlunoModal
+            aluno={alunoParaArmario}
+            open={!!alunoParaArmario}
+            onOpenChange={(val) => !val && setAlunoParaArmario(null)}
           />
         </div>
       </main>

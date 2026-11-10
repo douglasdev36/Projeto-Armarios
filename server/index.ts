@@ -29,9 +29,25 @@ function requireAdmin(req: AuthenticatedRequest, res: express.Response, next: ex
   next();
 }
 
-// --- HEALTHCHECK (Público) ---
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', database: 'PostgreSQL Active (Docker)' });
+// --- HEALTHCHECK & CRON PING (Públicos - mantêm API e Banco Neon acordados) ---
+app.get('/api/health', async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'ok', database: 'connected', timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('Healthcheck DB error:', error);
+    res.status(503).json({ status: 'error', database: 'disconnected' });
+  }
+});
+
+app.get('/api/ping', async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ ok: true, db: 'awake', timestamp: new Date().toISOString() });
+  } catch (error) {
+    console.error('Cron ping DB error:', error);
+    res.status(503).json({ ok: false, db: 'error' });
+  }
 });
 
 // --- AUTENTICAÇÃO ---
@@ -263,7 +279,7 @@ app.delete('/api/usuarios/:id', authMiddleware, requireAdmin, async (req: Authen
 
 // Middleware de proteção para todas as demais rotas da API
 app.use('/api', (req, res, next) => {
-  if (req.path === '/health' || req.path === '/auth/login') {
+  if (req.path === '/health' || req.path === '/ping' || req.path === '/auth/login') {
     return next();
   }
   return authMiddleware(req as AuthenticatedRequest, res, next);

@@ -45,36 +45,39 @@ export default function Login() {
   };
 
   return (
-    <div className="dark min-h-screen bg-background text-foreground flex items-center justify-center relative overflow-hidden">
+    <div
+      className="dark min-h-screen bg-[#0f172a] text-slate-100 flex items-center justify-center relative overflow-hidden"
+      style={{ colorScheme: "dark" }}
+    >
       {/* Decorative blobs */}
       <div className="login-blob w-80 h-80 -top-20 -right-20 fixed opacity-60" />
       <div className="login-blob w-64 h-64 -bottom-16 -left-16 fixed opacity-60" />
       
       {/* Login Card */}
       <div className="w-full max-w-md mx-4 animate-scale-in z-10">
-        <div className="bg-card rounded-2xl shadow-soft p-8 border border-border">
+        <div className="bg-[#131c31] rounded-2xl shadow-2xl p-8 border border-slate-800">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 text-primary mb-3">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary/15 text-primary mb-3">
               <KeyRound className="w-6 h-6" />
             </div>
-            <h1 className="text-2xl font-bold text-foreground">
+            <h1 className="text-2xl font-bold text-white">
               Acesso do Coordenador
             </h1>
-            <p className="text-muted-foreground mt-2 text-sm">
+            <p className="text-slate-400 mt-2 text-sm">
               Utilize suas credenciais para acessar o painel de armários.
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="email">E-mail institucional</Label>
+              <Label htmlFor="email" className="text-slate-200">E-mail institucional</Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
                 <Input
                   id="email"
                   type="email"
                   placeholder="seu.email@escola.com"
-                  className="pl-10"
+                  className="pl-10 bg-slate-900/80 border-slate-700 text-slate-100 placeholder:text-slate-500 [&:-webkit-autofill]:shadow-[inset_0_0_0px_1000px_#0f172a] [&:-webkit-autofill]:[-webkit-text-fill-color:#f1f5f9]"
                   value={email}
                   disabled={isLoading}
                   onChange={(e) => setEmail(e.target.value)}
@@ -85,14 +88,14 @@ export default function Login() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Senha de acesso</Label>
+              <Label htmlFor="password" className="text-slate-200">Senha de acesso</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
-                  className="pl-10 pr-10"
+                  className="pl-10 pr-10 bg-slate-900/80 border-slate-700 text-slate-100 placeholder:text-slate-500 [&:-webkit-autofill]:shadow-[inset_0_0_0px_1000px_#0f172a] [&:-webkit-autofill]:[-webkit-text-fill-color:#f1f5f9]"
                   value={password}
                   disabled={isLoading}
                   onChange={(e) => setPassword(e.target.value)}
@@ -102,7 +105,7 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors"
                 >
                   {showPassword ? (
                     <EyeOff className="h-5 w-5" />

@@ -220,6 +220,15 @@ export const api = {
     return handleResponse<TurmaItem>(res);
   },
 
+  async updateTurma(id: string, data: { nome: string; anoLetivo?: string; curso?: string; serie?: string; turno?: string }) {
+    const res = await fetch(`${API_URL}/turmas/${id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<TurmaItem>(res);
+  },
+
   async getTurmaDetalhes(id: string): Promise<TurmaDetalhes> {
     const res = await fetch(`${API_URL}/turmas/${id}/detalhes`, {
       headers: getAuthHeaders(),

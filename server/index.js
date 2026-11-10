@@ -334,6 +334,52 @@ app.post('/api/turmas', async (req, res) => {
   }
 });
 
+// Editar turma existente
+app.put('/api/turmas/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nome, anoLetivo, curso, serie, turno } = req.body;
+
+    if (!nome || !nome.trim()) {
+      return res.status(400).json({ error: 'Nome da turma é obrigatório' });
+    }
+
+    const existente = await prisma.turma.findUnique({ where: { id } });
+    if (!existente) {
+      return res.status(404).json({ error: 'Turma não encontrada' });
+    }
+
+    const duplicada = await prisma.turma.findFirst({
+      where: {
+        nome: nome.trim(),
+        NOT: { id },
+      },
+    });
+    if (duplicada) {
+      return res.status(400).json({ error: 'Já existe outra turma cadastrada com este nome' });
+    }
+
+    const turmaAtualizada = await prisma.turma.update({
+      where: { id },
+      data: {
+        nome: nome.trim(),
+        anoLetivo: anoLetivo?.trim() || existente.anoLetivo,
+        curso: curso?.trim() || existente.curso,
+        serie: serie?.trim() || existente.serie,
+        turno: turno || existente.turno,
+      },
+    });
+
+    res.json(turmaAtualizada);
+  } catch (error) {
+    console.error('Error updating turma:', error);
+    if (error.code === 'P2002') {
+      return res.status(400).json({ error: 'Já existe uma turma com este nome' });
+    }
+    res.status(500).json({ error: 'Erro ao atualizar turma' });
+  }
+});
+
 // 2.1. Visualização detalhada dos alunos por turma
 app.get('/api/turmas/:id/detalhes', async (req, res) => {
   try {

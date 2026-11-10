@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Search, Users, GraduationCap } from "lucide-react";
+import { Plus, Search, Users, GraduationCap, Pencil } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { DetalhesTurmaModal } from "@/components/DetalhesTurmaModal";
 import { PromocaoSeletivaDialog } from "@/components/PromocaoSeletivaDialog";
-import { api } from "@/lib/api";
+import { api, TurmaItem } from "@/lib/api";
 import { toast } from "sonner";
 
 export default function Turmas() {
@@ -35,6 +35,14 @@ export default function Turmas() {
   const [curso, setCurso] = useState("Ensino Regular");
   const [serie, setSerie] = useState("Ensino Fundamental");
   const [turno, setTurno] = useState("Manhã");
+
+  // Estados para Edição de Turma
+  const [editingTurma, setEditingTurma] = useState<TurmaItem | null>(null);
+  const [editNome, setEditNome] = useState("");
+  const [editAnoLetivo, setEditAnoLetivo] = useState("");
+  const [editCurso, setEditCurso] = useState("");
+  const [editSerie, setEditSerie] = useState("");
+  const [editTurno, setEditTurno] = useState("Manhã");
 
   const { data: turmasData = [], isLoading } = useQuery({
     queryKey: ["turmas"],
@@ -54,6 +62,50 @@ export default function Turmas() {
       toast.error(err.message || "Erro ao criar turma");
     },
   });
+
+  const updateTurmaMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { nome: string; anoLetivo?: string; curso?: string; serie?: string; turno?: string } }) =>
+      api.updateTurma(id, data),
+    onSuccess: () => {
+      toast.success("Turma atualizada com sucesso!");
+      queryClient.invalidateQueries({ queryKey: ["turmas"] });
+      queryClient.invalidateQueries({ queryKey: ["alunos"] });
+      queryClient.invalidateQueries({ queryKey: ["armarios"] });
+      queryClient.invalidateQueries({ queryKey: ["turma-detalhes"] });
+      queryClient.invalidateQueries({ queryKey: ["chaves"] });
+      setEditingTurma(null);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Erro ao atualizar turma");
+    },
+  });
+
+  const openEditDialog = (turma: TurmaItem) => {
+    setEditingTurma(turma);
+    setEditNome(turma.nome);
+    setEditAnoLetivo(turma.anoLetivo || "2024");
+    setEditCurso(turma.curso || "Ensino Regular");
+    setEditSerie(turma.serie || "Geral");
+    setEditTurno(turma.turno || "Manhã");
+  };
+
+  const handleUpdateTurma = () => {
+    if (!editingTurma) return;
+    if (!editNome.trim()) {
+      toast.error("Informe o nome da turma");
+      return;
+    }
+    updateTurmaMutation.mutate({
+      id: editingTurma.id,
+      data: {
+        nome: editNome.trim(),
+        anoLetivo: editAnoLetivo.trim(),
+        curso: editCurso.trim(),
+        serie: editSerie.trim(),
+        turno: editTurno,
+      },
+    });
+  };
 
   const filteredTurmas = turmasData.filter((turma) =>
     turma.nome.toLowerCase().includes(searchTerm.toLowerCase())
@@ -245,9 +297,18 @@ export default function Turmas() {
                         <GraduationCap className="h-6 w-6 text-primary" />
                       </div>
 
-                      {/* Botão de Olho para Visualização de Alunos (2.1) */}
+                      {/* Botões de Ação (Visualizar Alunos e Editar Turma) */}
                       <div className="flex items-center gap-1">
                         <DetalhesTurmaModal turmaId={turma.id} turmaNome={turma.nome} />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEditDialog(turma)}
+                          title="Editar turma"
+                          className="rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
 
@@ -278,6 +339,93 @@ export default function Turmas() {
               ))}
             </div>
           )}
+
+          {/* Dialog de Edição de Turma */}
+          <Dialog open={!!editingTurma} onOpenChange={(open) => !open && setEditingTurma(null)}>
+            <DialogContent className="sm:max-w-[480px] rounded-3xl">
+              <DialogHeader>
+                <DialogTitle className="text-xl flex items-center gap-2">
+                  <Pencil className="h-5 w-5 text-primary" />
+                  Editar Turma
+                </DialogTitle>
+                <DialogDescription>
+                  Altere o nome, ano letivo, curso, série ou turno da turma selecionada.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-nome" className="font-medium">Nome da Turma</Label>
+                  <Input
+                    id="edit-nome"
+                    placeholder="Ex: 9º Ano A ou 1º Ano de Informática"
+                    className="rounded-xl h-11"
+                    value={editNome}
+                    onChange={(e) => setEditNome(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-curso" className="font-medium">Curso</Label>
+                    <Input
+                      id="edit-curso"
+                      placeholder="Ex: Informática / Regular"
+                      className="rounded-xl h-11"
+                      value={editCurso}
+                      onChange={(e) => setEditCurso(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-turno" className="font-medium">Turno</Label>
+                    <Select value={editTurno} onValueChange={setEditTurno}>
+                      <SelectTrigger className="rounded-xl h-11">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Manhã">Manhã</SelectItem>
+                        <SelectItem value="Tarde">Tarde</SelectItem>
+                        <SelectItem value="Noite">Noite</SelectItem>
+                        <SelectItem value="Integral">Integral</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-serie" className="font-medium">Série / Período</Label>
+                    <Input
+                      id="edit-serie"
+                      placeholder="Ex: 1º Ano / 9º Ano"
+                      className="rounded-xl h-11"
+                      value={editSerie}
+                      onChange={(e) => setEditSerie(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-ano" className="font-medium">Ano Letivo</Label>
+                    <Input
+                      id="edit-ano"
+                      placeholder="Ex: 2024"
+                      className="rounded-xl h-11"
+                      value={editAnoLetivo}
+                      onChange={(e) => setEditAnoLetivo(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingTurma(null)} className="rounded-xl">
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleUpdateTurma}
+                  disabled={updateTurmaMutation.isPending}
+                  className="rounded-xl font-medium"
+                >
+                  {updateTurmaMutation.isPending ? "Salvando..." : "Salvar Alterações"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </main>
     </div>

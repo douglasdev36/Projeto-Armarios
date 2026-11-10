@@ -44,13 +44,8 @@ export default function Login() {
     }
   };
 
-  const fillDemoCredentials = () => {
-    setEmail("coordenador@escola.com");
-    setPassword("admin123");
-  };
-
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center relative overflow-hidden">
+    <div className="dark min-h-screen bg-background text-foreground flex items-center justify-center relative overflow-hidden">
       {/* Decorative blobs */}
       <div className="login-blob w-80 h-80 -top-20 -right-20 fixed opacity-60" />
       <div className="login-blob w-64 h-64 -bottom-16 -left-16 fixed opacity-60" />
@@ -78,7 +73,7 @@ export default function Login() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="coordenador@escola.com"
+                  placeholder="seu.email@escola.com"
                   className="pl-10"
                   value={email}
                   disabled={isLoading}
@@ -129,24 +124,6 @@ export default function Login() {
               )}
             </Button>
           </form>
-
-          {/* Dica de credenciais de demonstração */}
-          <div className="mt-6 pt-5 border-t border-border/60 text-center">
-            <p className="text-xs text-muted-foreground">
-              Acesso padrão inicial:{" "}
-              <span className="font-semibold text-foreground">coordenador@escola.com</span> /{" "}
-              <span className="font-semibold text-foreground">admin123</span>
-            </p>
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="text-xs text-primary mt-1"
-              onClick={fillDemoCredentials}
-            >
-              Preencher dados de acesso padrão
-            </Button>
-          </div>
         </div>
       </div>
     </div>

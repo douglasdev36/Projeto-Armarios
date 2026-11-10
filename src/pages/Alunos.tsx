@@ -9,7 +9,6 @@ import {
   CheckSquare, 
   Square, 
   AlertCircle,
-  Filter,
   GraduationCap
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -56,15 +55,53 @@ import { LockerBadge } from "@/components/LockerBadge";
 import { useNavigate } from "react-router-dom";
 import { ImportAlunosDialog } from "@/components/ImportAlunosDialog";
 import { EditarAlunoDialog } from "@/components/EditarAlunoDialog";
-import { api, AlunoItem } from "@/lib/api";
+import { api, AlunoItem, TurmaItem } from "@/lib/api";
 import { toast } from "sonner";
+
+type CursoFilterKey = "todos" | "administracao" | "eletromecanica" | "informatica" | string;
+type SerieFilterKey = "todo_curso" | "1" | "2" | "3";
+
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function getTurmaCursoKey(turma: TurmaItem): string {
+  const texto = normalizeText(`${turma.curso || ""} ${turma.nome || ""}`);
+  if (texto.includes("administrac") || /\badm\b/.test(texto)) return "administracao";
+  if (texto.includes("eletromec") || /\beletro\b/.test(texto)) return "eletromecanica";
+  if (texto.includes("informatic") || /\binfo\b/.test(texto)) return "informatica";
+  const cursoLimpo = turma.curso?.trim();
+  if (cursoLimpo && normalizeText(cursoLimpo) !== "ensino regular") {
+    return normalizeText(cursoLimpo);
+  }
+  return "outros";
+}
+
+function getTurmaSerieKey(turma: TurmaItem): "1" | "2" | "3" | "outra" {
+  const texto = normalizeText(`${turma.serie || ""} ${turma.nome || ""}`);
+  if (/(?:^|\s)1\s*[oº°]/.test(texto) || /(?:^|\s)1\s*(?:ano|serie)\b/.test(texto) || /(?:^|\s)1(?:\s|$|-)/.test(texto) || texto.includes("primeiro")) {
+    return "1";
+  }
+  if (/(?:^|\s)2\s*[oº°]/.test(texto) || /(?:^|\s)2\s*(?:ano|serie)\b/.test(texto) || /(?:^|\s)2(?:\s|$|-)/.test(texto) || texto.includes("segundo")) {
+    return "2";
+  }
+  if (/(?:^|\s)3\s*[oº°]/.test(texto) || /(?:^|\s)3\s*(?:ano|serie)\b/.test(texto) || /(?:^|\s)3(?:\s|$|-)/.test(texto) || texto.includes("terceiro")) {
+    return "3";
+  }
+  return "outra";
+}
 
 export default function Alunos() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedTurmaId, setSelectedTurmaId] = useState<string>("todas");
+  const [selectedCurso, setSelectedCurso] = useState<CursoFilterKey>("todos");
+  const [selectedSerie, setSelectedSerie] = useState<SerieFilterKey>("todo_curso");
   const [selectedAlunoIds, setSelectedAlunoIds] = useState<string[]>([]);
   
   // Modais de Edição e Exclusão
@@ -89,10 +126,10 @@ export default function Alunos() {
     queryFn: api.getTurmas,
   });
 
-  // Carrega alunos com filtro de turma (reaproveita cache global quando "todas")
+  // Carrega todos os alunos ativos uma única vez (reaproveita cache global) e filtra instantaneamente
   const { data: alunosData = [], isLoading } = useQuery({
-    queryKey: selectedTurmaId === "todas" ? ["alunos"] : ["alunos", selectedTurmaId],
-    queryFn: () => api.getAlunos(selectedTurmaId),
+    queryKey: ["alunos"],
+    queryFn: () => api.getAlunos(),
   });
 
   const deleteMutation = useMutation({
@@ -129,12 +166,57 @@ export default function Alunos() {
     },
   });
 
+  const turmasById = new Map(turmas.map((t) => [t.id, t]));
+
+  // Cursos extras cadastrados além dos 3 principais (Administração, Eletromecânica, Informática)
+  const cursosPrincipais: Array<{ key: CursoFilterKey; label: string }> = [
+    { key: "administracao", label: "Administração" },
+    { key: "eletromecanica", label: "Eletromecânica" },
+    { key: "informatica", label: "Informática" },
+  ];
+
+  const handleSelectCurso = (cursoKey: CursoFilterKey) => {
+    setSelectedCurso(cursoKey);
+    setSelectedSerie("todo_curso");
+    setSelectedAlunoIds([]);
+  };
+
+  const handleSelectSerie = (serieKey: SerieFilterKey) => {
+    setSelectedSerie(serieKey);
+    setSelectedAlunoIds([]);
+  };
+
   const filteredAlunos = alunosData.filter((aluno) => {
     const searchLower = searchTerm.toLowerCase();
-    return (
+    const matchesSearch =
       aluno.nome.toLowerCase().includes(searchLower) ||
-      aluno.matricula.includes(searchTerm)
-    );
+      aluno.matricula.toLowerCase().includes(searchLower);
+
+    if (!matchesSearch) return false;
+    if (selectedCurso === "todos") return true;
+
+    const turmaObj = aluno.turmaId ? turmasById.get(aluno.turmaId) : undefined;
+    const textoFallback = normalizeText(aluno.turma || "");
+
+    const cursoAluno = turmaObj
+      ? getTurmaCursoKey(turmaObj)
+      : textoFallback.includes("administrac") || /\badm\b/.test(textoFallback)
+      ? "administracao"
+      : textoFallback.includes("eletromec")
+      ? "eletromecanica"
+      : textoFallback.includes("informatic") || /\binfo\b/.test(textoFallback)
+      ? "informatica"
+      : "outros";
+
+    if (cursoAluno !== selectedCurso) return false;
+
+    if (selectedSerie === "todo_curso") return true;
+
+    const serieAluno = turmaObj
+      ? getTurmaSerieKey(turmaObj)
+      : getTurmaSerieKey({ id: "", nome: aluno.turma || "", anoLetivo: "", totalAlunos: 0, armariosOcupados: 0, armariosLivres: 0 });
+
+    return serieAluno === selectedSerie;
   });
 
   // Seleção múltipla para sorteio (Requisito 5)
@@ -210,37 +292,68 @@ export default function Alunos() {
             </div>
           </div>
 
-          {/* Search e Filtro por Turma (Requisito 5) */}
-          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-            <div className="relative flex-1 w-full max-w-md">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nome ou matrícula..."
-                className="pl-10 h-11 rounded-xl"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          {/* Search e Filtro por Curso / Série (estilo Armários) */}
+          <div className="space-y-3">
+            <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por nome ou matrícula..."
+                  className="pl-10 h-11 rounded-xl"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+
+              {/* Botões de Filtro por Curso */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant={selectedCurso === "todos" ? "default" : "outline"}
+                  onClick={() => handleSelectCurso("todos")}
+                  className="rounded-xl h-9 text-xs"
+                >
+                  Todos os Cursos
+                </Button>
+                {cursosPrincipais.map((c) => (
+                  <Button
+                    key={c.key}
+                    size="sm"
+                    variant={selectedCurso === c.key ? "default" : "outline"}
+                    onClick={() => handleSelectCurso(c.key)}
+                    className="rounded-xl h-9 text-xs"
+                  >
+                    {c.label}
+                  </Button>
+                ))}
+              </div>
             </div>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs font-semibold text-muted-foreground">Turma:</span>
+            {/* Sub-filtro de Série / Ano quando um curso é selecionado */}
+            {selectedCurso !== "todos" && (
+              <div className="flex flex-wrap items-center gap-2 p-3 rounded-2xl bg-muted/40 border border-border/60 animate-fade-in">
+                <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mr-1">
+                  <GraduationCap className="h-4 w-4 text-primary" />
+                  Ano / Turma:
+                </span>
+                {[
+                  { key: "todo_curso" as SerieFilterKey, label: "Todo o Curso" },
+                  { key: "1" as SerieFilterKey, label: "1º Ano" },
+                  { key: "2" as SerieFilterKey, label: "2º Ano" },
+                  { key: "3" as SerieFilterKey, label: "3º Ano" },
+                ].map((s) => (
+                  <Button
+                    key={s.key}
+                    size="sm"
+                    variant={selectedSerie === s.key ? "default" : "outline"}
+                    onClick={() => handleSelectSerie(s.key)}
+                    className="rounded-xl h-8 text-xs"
+                  >
+                    {s.label}
+                  </Button>
+                ))}
               </div>
-              <Select value={selectedTurmaId} onValueChange={setSelectedTurmaId}>
-                <SelectTrigger className="h-11 w-[220px] rounded-xl">
-                  <SelectValue placeholder="Todas as Turmas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas as Turmas</SelectItem>
-                  {turmas.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.nome} ({t.totalAlunos} alunos)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            )}
           </div>
 
           {/* Barra de Ações Rápidas de Seleção */}

@@ -396,9 +396,10 @@ export const api = {
 
   // --- ALUNOS ---
   async getAlunos(turmaId?: string): Promise<AlunoItem[]> {
-    const url = turmaId && turmaId !== 'todas'
-      ? `${API_URL}/alunos?turmaId=${encodeURIComponent(turmaId)}`
-      : `${API_URL}/alunos`;
+    const url =
+      typeof turmaId === 'string' && turmaId.trim() !== '' && turmaId !== 'todas'
+        ? `${API_URL}/alunos?turmaId=${encodeURIComponent(turmaId)}`
+        : `${API_URL}/alunos`;
     const res = await fetch(url, { headers: getAuthHeaders() });
     return handleResponse<AlunoItem[]>(res);
   },

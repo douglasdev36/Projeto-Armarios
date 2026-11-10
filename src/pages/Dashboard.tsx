@@ -30,7 +30,7 @@ export default function Dashboard() {
 
   const { data: alunos = [] } = useQuery({
     queryKey: ["alunos"],
-    queryFn: api.getAlunos,
+    queryFn: () => api.getAlunos(),
   });
 
   const filteredAlunos = alunos.filter(

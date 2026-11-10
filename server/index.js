@@ -1168,7 +1168,7 @@ app.get('/api/alunos', async (req, res) => {
   try {
     const { turmaId } = req.query;
     const where = { ativo: true };
-    if (turmaId && typeof turmaId === 'string' && turmaId !== 'todas') {
+    if (turmaId && typeof turmaId === 'string' && turmaId !== 'todas' && turmaId !== '[object Object]') {
       where.turmaId = turmaId;
     }
 

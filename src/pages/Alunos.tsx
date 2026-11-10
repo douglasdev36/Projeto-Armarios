@@ -9,7 +9,8 @@ import {
   CheckSquare, 
   Square, 
   AlertCircle,
-  GraduationCap
+  GraduationCap,
+  RefreshCw
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -127,7 +128,7 @@ export default function Alunos() {
   });
 
   // Carrega todos os alunos ativos uma única vez (reaproveita cache global) e filtra instantaneamente
-  const { data: alunosData = [], isLoading } = useQuery({
+  const { data: alunosData = [], isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["alunos"],
     queryFn: () => api.getAlunos(),
   });
@@ -189,8 +190,8 @@ export default function Alunos() {
   const filteredAlunos = alunosData.filter((aluno) => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch =
-      aluno.nome.toLowerCase().includes(searchLower) ||
-      aluno.matricula.toLowerCase().includes(searchLower);
+      (aluno.nome ?? "").toLowerCase().includes(searchLower) ||
+      (aluno.matricula ?? "").toLowerCase().includes(searchLower);
 
     if (!matchesSearch) return false;
     if (selectedCurso === "todos") return true;
@@ -382,7 +383,20 @@ export default function Alunos() {
               )}
             </div>
 
-            <span>Total: {filteredAlunos.length} alunos</span>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className="h-7 px-2 text-xs gap-1.5 rounded-lg"
+                title="Atualizar lista de alunos do banco"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+                Atualizar
+              </Button>
+              <span>Total: {filteredAlunos.length} alunos</span>
+            </div>
           </div>
 
           {/* Tabela com Rolagem Interna e Cabeçalho Sticky (Requisito 7) */}
@@ -414,6 +428,20 @@ export default function Alunos() {
                     <TableRow>
                       <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
                         Carregando alunos...
+                      </TableCell>
+                    </TableRow>
+                  ) : isError ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-10">
+                        <div className="flex flex-col items-center gap-2 text-destructive">
+                          <AlertCircle className="h-6 w-6" />
+                          <p className="font-medium text-sm">
+                            Erro ao carregar alunos: {(error as Error)?.message || "Falha de comunicação com o servidor"}
+                          </p>
+                          <Button variant="outline" size="sm" onClick={() => refetch()} className="rounded-xl mt-1">
+                            Tentar novamente
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : filteredAlunos.length === 0 ? (

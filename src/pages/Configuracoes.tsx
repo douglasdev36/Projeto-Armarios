@@ -95,10 +95,13 @@ const Configuracoes = () => {
     }
   }, [user]);
 
-  // Consulta de Usuários do Sistema
+  const isAdmin = user?.role === "coordenador" || user?.role === "admin";
+
+  // Consulta de Usuários do Sistema (somente administradores/coordenadores)
   const { data: usuarios = [], isLoading: carregandoUsuarios } = useQuery({
     queryKey: ["usuarios"],
     queryFn: api.getUsuarios,
+    enabled: isAdmin,
   });
 
   // Modal Novo Usuário
@@ -674,6 +677,7 @@ const Configuracoes = () => {
             </Card>
 
             {/* Gerenciamento de Usuários do Sistema */}
+            {isAdmin && (
             <Card className="rounded-3xl">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                 <div>
@@ -859,6 +863,7 @@ const Configuracoes = () => {
                 )}
               </CardContent>
             </Card>
+            )}
 
             {/* Botão Salvar */}
             <div className="flex justify-end">

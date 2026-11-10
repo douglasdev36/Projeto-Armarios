@@ -11,8 +11,23 @@ const prisma = new PrismaClient();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
+
+function requireAdmin(req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) {
+  const role = req.user?.role;
+  if (role !== 'coordenador' && role !== 'admin') {
+    return res.status(403).json({ error: 'Acesso restrito a administradores ou coordenadores.' });
+  }
+  next();
+}
 
 // --- HEALTHCHECK (Público) ---
 app.get('/api/health', (req, res) => {
@@ -102,13 +117,17 @@ app.put('/api/auth/profile', authMiddleware, async (req: AuthenticatedRequest, r
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
-    // Se estiver definindo nova senha, valida tamanho e senha atual (se exigida)
+    // Se estiver definindo nova senha, exige a senha atual (exceto no primeiro acesso padrão)
     if (newPassword) {
       if (typeof newPassword !== 'string' || newPassword.length < 6) {
         return res.status(400).json({ error: 'A nova senha deve ter no mínimo 6 caracteres' });
       }
 
-      // Se for a conta padrão inicial (admin123), permite trocar sem precisar adivinhar se não tiver informado
+      const isContaPadrao = usuario.email === 'coordenador@escola.com';
+      if (!isContaPadrao && !currentPassword) {
+        return res.status(400).json({ error: 'Informe a senha atual para definir uma nova senha' });
+      }
+
       if (currentPassword) {
         const senhaValida = verifyPassword(currentPassword, usuario.senha);
         if (!senhaValida) {
@@ -164,7 +183,7 @@ app.put('/api/auth/profile', authMiddleware, async (req: AuthenticatedRequest, r
 });
 
 // --- GERENCIAMENTO DE USUÁRIOS (Admin/Coordenador) ---
-app.get('/api/usuarios', authMiddleware, async (req: AuthenticatedRequest, res) => {
+app.get('/api/usuarios', authMiddleware, requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const usuarios = await prisma.usuario.findMany({
       select: { id: true, nome: true, email: true, role: true, createdAt: true },
@@ -177,7 +196,7 @@ app.get('/api/usuarios', authMiddleware, async (req: AuthenticatedRequest, res) 
   }
 });
 
-app.post('/api/usuarios', authMiddleware, async (req: AuthenticatedRequest, res) => {
+app.post('/api/usuarios', authMiddleware, requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const { nome, email, senha, role } = req.body;
 
@@ -188,6 +207,9 @@ app.post('/api/usuarios', authMiddleware, async (req: AuthenticatedRequest, res)
     if (senha.length < 6) {
       return res.status(400).json({ error: 'A senha deve possuir pelo menos 6 caracteres' });
     }
+
+    const rolesPermitidos = ['coordenador', 'admin', 'atendente'];
+    const roleFinal = rolesPermitidos.includes(role) ? role : 'atendente';
 
     const emailLimpo = email.toLowerCase().trim();
     const jaExiste = await prisma.usuario.findUnique({
@@ -203,7 +225,7 @@ app.post('/api/usuarios', authMiddleware, async (req: AuthenticatedRequest, res)
         nome: nome.trim(),
         email: emailLimpo,
         senha: hashPassword(senha),
-        role: role || 'coordenador',
+        role: roleFinal,
       },
       select: { id: true, nome: true, email: true, role: true, createdAt: true },
     });
@@ -215,7 +237,7 @@ app.post('/api/usuarios', authMiddleware, async (req: AuthenticatedRequest, res)
   }
 });
 
-app.delete('/api/usuarios/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
+app.delete('/api/usuarios/:id', authMiddleware, requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
 
@@ -250,10 +272,12 @@ app.use('/api', (req, res, next) => {
 // --- DASHBOARD STATS ---
 app.get('/api/dashboard/stats', async (req, res) => {
   try {
-    const totalArmarios = await prisma.armario.count();
-    const armariosLivres = await prisma.armario.count({ where: { status: 'livre' } });
-    const armariosOcupados = await prisma.armario.count({ where: { status: 'ocupado' } });
-    const totalAlunos = await prisma.aluno.count({ where: { ativo: true } });
+    const [totalArmarios, armariosLivres, armariosOcupados, totalAlunos] = await Promise.all([
+      prisma.armario.count(),
+      prisma.armario.count({ where: { status: 'livre' } }),
+      prisma.armario.count({ where: { status: 'ocupado' } }),
+      prisma.aluno.count({ where: { ativo: true } }),
+    ]);
 
     res.json({
       totalArmarios,
@@ -1514,6 +1538,8 @@ app.post('/api/sorteio/executar-multi', async (req: AuthenticatedRequest, res) =
 
     const resultados = await prisma.$transaction(async (tx) => {
       const transResultados = [];
+      const sorteioData = [];
+      const historicoData = [];
 
       for (let i = 0; i < qtdParaSortear; i++) {
         const aluno = alunosParticipantes[i];
@@ -1525,27 +1551,25 @@ app.post('/api/sorteio/executar-multi', async (req: AuthenticatedRequest, res) =
             status: 'ocupado',
             alunoId: aluno.id,
             dataDistribuicao: now,
+            renovado: false,
+            dataRenovacao: null,
           },
         });
 
-        await tx.sorteioResultado.create({
-          data: {
-            alunoNome: aluno.nome,
-            armario: armario.numero,
-            turma: aluno.turma?.nome || null,
-            nomeSorteio: tituloSorteio,
-          },
+        sorteioData.push({
+          alunoNome: aluno.nome,
+          armario: armario.numero,
+          turma: aluno.turma?.nome || null,
+          nomeSorteio: tituloSorteio,
         });
 
-        await tx.historicoArmario.create({
-          data: {
-            armarioNumero: armario.numero,
-            alunoId: aluno.id,
-            alunoNome: aluno.nome,
-            tipo: 'sorteio',
-            responsavelEmail: req.user?.email,
-            detalhes: `Contemplado no sorteio: ${tituloSorteio}`,
-          },
+        historicoData.push({
+          armarioNumero: armario.numero,
+          alunoId: aluno.id,
+          alunoNome: aluno.nome,
+          tipo: 'sorteio',
+          responsavelEmail: req.user?.email,
+          detalhes: `Contemplado no sorteio: ${tituloSorteio}`,
         });
 
         transResultados.push({
@@ -1555,6 +1579,11 @@ app.post('/api/sorteio/executar-multi', async (req: AuthenticatedRequest, res) =
           armario: armario.numero,
           data: now.toISOString(),
         });
+      }
+
+      if (sorteioData.length > 0) {
+        await tx.sorteioResultado.createMany({ data: sorteioData });
+        await tx.historicoArmario.createMany({ data: historicoData });
       }
 
       return transResultados;

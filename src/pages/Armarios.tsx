@@ -146,7 +146,22 @@ export default function Armarios() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <RenovacaoArmariosDialog />
+              <Button
+                variant={renovacaoConfig?.ativa ? "default" : "outline"}
+                className="rounded-2xl gap-2"
+                onClick={() => setRenovacaoDialogOpen(true)}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${renovacaoConfig?.ativa ? "animate-spin" : ""}`}
+                  style={{ animationDuration: "8s" }}
+                />
+                Renovação de Armários
+                {renovacaoConfig?.ativa && (
+                  <Badge className="ml-1 bg-emerald-500 hover:bg-emerald-500 text-white text-[10px] px-1.5 py-0">
+                    Ativa
+                  </Badge>
+                )}
+              </Button>
               <ExcluirArmariosLoteDialog />
               <GerenciarArmariosDialog />
             </div>

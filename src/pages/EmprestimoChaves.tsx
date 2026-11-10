@@ -69,17 +69,25 @@ export default function EmprestimoChaves() {
   // Confirmação de Devolução
   const [devolucaoItem, setDevolucaoItem] = useState<EmprestimoChaveItem | null>(null);
 
-  // Alertas e Resumos
+  // Alertas e Resumos (compartilha intervalo global com a sidebar)
   const { data: alertasData } = useQuery({
     queryKey: ["chavesAlertas"],
     queryFn: api.getAlertasChaves,
-    refetchInterval: 15000,
   });
 
-  // Lista de Empréstimos
+  // Lista de Empréstimos (busca por status e filtra busca por texto localmente)
   const { data: emprestimos = [], isLoading } = useQuery({
-    queryKey: ["chavesEmprestimos", statusFilter, searchTerm],
-    queryFn: () => api.getEmprestimosChaves(statusFilter, searchTerm),
+    queryKey: ["chavesEmprestimos", statusFilter],
+    queryFn: () => api.getEmprestimosChaves(statusFilter),
+  });
+
+  const filteredEmprestimos = emprestimos.filter((item) => {
+    if (!searchTerm.trim()) return true;
+    const q = searchTerm.toLowerCase();
+    return (
+      item.alunoNome.toLowerCase().includes(q) ||
+      item.armarioNumero.toLowerCase().includes(q)
+    );
   });
 
   // Lista de todos os alunos ativos
@@ -394,14 +402,14 @@ export default function EmprestimoChaves() {
                         Carregando registros de chaves...
                       </TableCell>
                     </TableRow>
-                  ) : emprestimos.length === 0 ? (
+                  ) : filteredEmprestimos.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
                         Nenhum registro de empréstimo encontrado.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    emprestimos.map((item) => {
+                    filteredEmprestimos.map((item) => {
                       const isDevolvida = item.status === "devolvida";
                       const isAtrasada = item.estadoVisual === "atrasada";
 

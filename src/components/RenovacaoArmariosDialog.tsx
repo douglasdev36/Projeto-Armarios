@@ -66,11 +66,13 @@ export function RenovacaoArmariosDialog({
   const { data: config } = useQuery({
     queryKey: ["renovacao-config"],
     queryFn: api.getRenovacaoConfig,
+    enabled: open,
   });
 
   const { data: armarios = [] } = useQuery({
     queryKey: ["armarios"],
     queryFn: api.getArmarios,
+    enabled: open,
   });
 
   const [titulo, setTitulo] = useState("Renovação de Armários");
@@ -502,3 +504,4 @@ export function RenovacaoArmariosDialog({
     </Dialog>
   );
 }
+

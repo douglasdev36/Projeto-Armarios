@@ -40,11 +40,13 @@ export function EditarAlunoDialog({ aluno, open, onOpenChange }: EditarAlunoDial
   const { data: armarios = [] } = useQuery({
     queryKey: ["armarios"],
     queryFn: api.getArmarios,
+    enabled: open,
   });
 
   const { data: turmas = [] } = useQuery({
     queryKey: ["turmas"],
     queryFn: api.getTurmas,
+    enabled: open,
   });
 
   useEffect(() => {

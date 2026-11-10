@@ -89,9 +89,9 @@ export default function Alunos() {
     queryFn: api.getTurmas,
   });
 
-  // Carrega alunos com filtro de turma
+  // Carrega alunos com filtro de turma (reaproveita cache global quando "todas")
   const { data: alunosData = [], isLoading } = useQuery({
-    queryKey: ["alunos", selectedTurmaId],
+    queryKey: selectedTurmaId === "todas" ? ["alunos"] : ["alunos", selectedTurmaId],
     queryFn: () => api.getAlunos(selectedTurmaId),
   });
 

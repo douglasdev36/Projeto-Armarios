@@ -43,7 +43,7 @@ export function AppSidebar() {
   const { data: alertasChaves } = useQuery({
     queryKey: ["chavesAlertas"],
     queryFn: api.getAlertasChaves,
-    refetchInterval: 20000,
+    refetchInterval: 60000,
   });
 
   const handleLogout = () => {

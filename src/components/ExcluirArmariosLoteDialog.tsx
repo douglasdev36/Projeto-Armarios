@@ -39,6 +39,7 @@ const prefixos = ["A", "B", "C", "D", "E", "F"];
 export function ExcluirArmariosLoteDialog() {
   const [open, setOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [etapaConfirm, setEtapaConfirm] = useState<1 | 2>(1);
   const [prefixo, setPrefixo] = useState("A");
   const [inicio, setInicio] = useState("1");
   const [fim, setFim] = useState("10");
@@ -200,29 +201,56 @@ export function ExcluirArmariosLoteDialog() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirmação Explícita de Exclusão */}
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      {/* Confirmação Explícita em Duas Etapas */}
+      <AlertDialog
+        open={confirmOpen}
+        onOpenChange={(val) => {
+          setConfirmOpen(val);
+          if (!val) setEtapaConfirm(1);
+        }}
+      >
         <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="h-5 w-5" />
-              Confirmar Exclusão em Lote
+              {etapaConfirm === 1
+                ? "Confirmar Exclusão em Lote"
+                : "Confirmação Final — Excluir Armários?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Você está prestes a excluir permanentemente <strong>{previewData?.livres}</strong> armários livres do Bloco {prefixo} (intervalo {inicio} a {fim}).
-              <br /><br />
-              Esta ação não pode ser desfeita. Deseja realmente prosseguir?
+              {etapaConfirm === 1 ? (
+                <>
+                  Você está prestes a excluir permanentemente <strong>{previewData?.livres}</strong> armários livres do Bloco {prefixo} (intervalo {inicio} a {fim}).
+                  <br /><br />
+                  Esta ação não pode ser desfeita. Deseja continuar?
+                </>
+              ) : (
+                <>
+                  Tem <strong>certeza absoluta</strong> que deseja excluir permanentemente{" "}
+                  <strong>{previewData?.livres} armário(s)</strong> do Bloco {prefixo}?
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => excluirMutation.mutate()}
-              disabled={excluirMutation.isPending}
-              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl"
-            >
-              {excluirMutation.isPending ? "Excluindo..." : "Sim, excluir armários"}
-            </AlertDialogAction>
+            {etapaConfirm === 1 ? (
+              <Button
+                variant="destructive"
+                className="rounded-xl"
+                onClick={() => setEtapaConfirm(2)}
+              >
+                Continuar para Confirmação
+              </Button>
+            ) : (
+              <AlertDialogAction
+                onClick={() => excluirMutation.mutate()}
+                disabled={excluirMutation.isPending}
+                className="bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl font-bold"
+              >
+                {excluirMutation.isPending ? "Excluindo..." : "Sim, excluir definitivamente"}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

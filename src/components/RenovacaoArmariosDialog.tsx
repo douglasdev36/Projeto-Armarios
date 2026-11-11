@@ -33,6 +33,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   RefreshCw,
   Calendar,
   CheckCircle2,
@@ -42,9 +49,20 @@ import {
   Unlock,
   Play,
   Square,
+  AlertTriangle,
+  Filter,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ArmarioItem } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  detectCursoFromText,
+  detectSerieInText,
+  getCursoLabel,
+  getTurmaCursoKey,
+  getTurmaSerieKey,
+  normalizeText,
+} from "@/lib/turmaFilters";
 import { toast } from "sonner";
 
 interface RenovacaoArmariosDialogProps {
@@ -56,6 +74,7 @@ export function RenovacaoArmariosDialog({
   externalOpen,
   onExternalOpenChange,
 }: RenovacaoArmariosDialogProps = {}) {
+  const { isGestor } = useAuth();
   const [internalOpen, setInternalOpen] = useState(false);
   const isControlled = externalOpen !== undefined;
   const open = isControlled ? externalOpen : internalOpen;
@@ -75,11 +94,24 @@ export function RenovacaoArmariosDialog({
     enabled: open,
   });
 
+  const { data: turmas = [] } = useQuery({
+    queryKey: ["turmas"],
+    queryFn: api.getTurmas,
+    enabled: open,
+  });
+
   const [titulo, setTitulo] = useState("Renovação de Armários");
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
   const [resetarRenovacoes, setResetarRenovacoes] = useState(true);
   const [busca, setBusca] = useState("");
+  const [cursoFilter, setCursoFilter] = useState<string>("todos");
+  const [serieFilter, setSerieFilter] = useState<string>("todos");
+  const [turmaFilter, setTurmaFilter] = useState<string>("todas");
+  const [activeTab, setActiveTab] = useState<"pendentes" | "renovados" | "todos">("pendentes");
+  const [liberarConfirmOpen, setLiberarConfirmOpen] = useState(false);
+  const [liberarEtapa, setLiberarEtapa] = useState<1 | 2>(1);
+  const [encerrarConfirmOpen, setEncerrarConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (config) {
@@ -133,6 +165,8 @@ export function RenovacaoArmariosDialog({
     mutationFn: api.liberarNaoRenovados,
     onSuccess: (res) => {
       toast.success(res.message);
+      setLiberarConfirmOpen(false);
+      setLiberarEtapa(1);
       invalidateAll();
     },
     onError: (err: any) => {
@@ -167,19 +201,51 @@ export function RenovacaoArmariosDialog({
     .filter((a) => a.status === "ocupado")
     .sort((a, b) => a.numero.localeCompare(b.numero, undefined, { numeric: true, sensitivity: "base" }));
 
-  const filtrar = (lista: ArmarioItem[]) => {
-    if (!busca.trim()) return lista;
-    const q = busca.toLowerCase();
-    return lista.filter(
-      (a) =>
-        a.numero.toLowerCase().includes(q) ||
-        (a.aluno?.toLowerCase().includes(q) ?? false) ||
-        (a.turma?.toLowerCase().includes(q) ?? false)
-    );
+  const turmasByNome = new Map(turmas.map((t) => [normalizeText(t.nome), t]));
+
+  const getArmarioCursoKey = (arm: ArmarioItem) => {
+    const turmaObj = arm.turma ? turmasByNome.get(normalizeText(arm.turma)) : undefined;
+    return turmaObj ? getTurmaCursoKey(turmaObj) : detectCursoFromText(arm.turma || "");
   };
 
-  const pendentes = filtrar(armariosOcupados.filter((a) => !a.renovado));
-  const renovados = filtrar(armariosOcupados.filter((a) => a.renovado));
+  const getArmarioSerieKey = (arm: ArmarioItem) => {
+    const turmaObj = arm.turma ? turmasByNome.get(normalizeText(arm.turma)) : undefined;
+    return turmaObj ? getTurmaSerieKey(turmaObj) : detectSerieInText(arm.turma || "") || "outra";
+  };
+
+  const cursosDisponiveis = Array.from(
+    new Set([
+      "administracao",
+      "eletromecanica",
+      "informatica",
+      ...turmas.map((t) => getTurmaCursoKey(t)).filter((k) => k !== "outros"),
+    ])
+  );
+
+  const turmasNoFiltro = turmas.filter((t) => {
+    if (cursoFilter !== "todos" && getTurmaCursoKey(t) !== cursoFilter) return false;
+    if (serieFilter !== "todos" && getTurmaSerieKey(t) !== serieFilter) return false;
+    return true;
+  });
+
+  const ocupadosFiltrados = armariosOcupados.filter((a) => {
+    if (cursoFilter !== "todos" && getArmarioCursoKey(a) !== cursoFilter) return false;
+    if (serieFilter !== "todos" && getArmarioSerieKey(a) !== serieFilter) return false;
+    if (turmaFilter !== "todas" && normalizeText(a.turma || "") !== normalizeText(turmaFilter)) return false;
+
+    if (busca.trim()) {
+      const q = busca.toLowerCase();
+      const bate =
+        a.numero.toLowerCase().includes(q) ||
+        (a.aluno?.toLowerCase().includes(q) ?? false) ||
+        (a.turma?.toLowerCase().includes(q) ?? false);
+      if (!bate) return false;
+    }
+    return true;
+  });
+
+  const pendentes = ocupadosFiltrados.filter((a) => !a.renovado);
+  const renovados = ocupadosFiltrados.filter((a) => a.renovado);
 
   const totalPendentesGeral = armariosOcupados.filter((a) => !a.renovado).length;
   const totalRenovadosGeral = armariosOcupados.filter((a) => a.renovado).length;
@@ -224,97 +290,112 @@ export function RenovacaoArmariosDialog({
         </DialogHeader>
 
         <div className="space-y-6 py-2">
-          {/* Seção 1: Configuração do Período */}
-          <div className="p-4 rounded-2xl border bg-muted/30 space-y-4">
-            <div className="flex items-center gap-2 font-semibold text-sm text-foreground">
-              <Calendar className="h-4 w-4 text-primary" />
-              Configuração da Campanha de Renovação
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="titulo-renovacao" className="text-xs">Identificação / Período</Label>
-                <Input
-                  id="titulo-renovacao"
-                  placeholder="Ex: Renovação 2026"
-                  className="rounded-xl"
-                  value={titulo}
-                  onChange={(e) => setTitulo(e.target.value)}
-                />
+          {/* Seção 1: Configuração do Período (somente Coordenador/Admin) */}
+          {isGestor ? (
+            <div className="p-4 rounded-2xl border bg-muted/30 space-y-4">
+              <div className="flex items-center gap-2 font-semibold text-sm text-foreground">
+                <Calendar className="h-4 w-4 text-primary" />
+                Configuração da Campanha de Renovação
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="data-inicio" className="text-xs">Data de Início</Label>
-                <Input
-                  id="data-inicio"
-                  type="date"
-                  className="rounded-xl"
-                  value={dataInicio}
-                  onChange={(e) => setDataInicio(e.target.value)}
-                />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="titulo-renovacao" className="text-xs">Identificação / Período</Label>
+                  <Input
+                    id="titulo-renovacao"
+                    placeholder="Ex: Renovação 2026"
+                    className="rounded-xl"
+                    value={titulo}
+                    onChange={(e) => setTitulo(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="data-inicio" className="text-xs">Data de Início</Label>
+                  <Input
+                    id="data-inicio"
+                    type="date"
+                    className="rounded-xl"
+                    value={dataInicio}
+                    onChange={(e) => setDataInicio(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="data-fim" className="text-xs">Data de Término</Label>
+                  <Input
+                    id="data-fim"
+                    type="date"
+                    className="rounded-xl"
+                    value={dataFim}
+                    onChange={(e) => setDataFim(e.target.value)}
+                  />
+                </div>
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="data-fim" className="text-xs">Data de Término</Label>
-                <Input
-                  id="data-fim"
-                  type="date"
-                  className="rounded-xl"
-                  value={dataFim}
-                  onChange={(e) => setDataFim(e.target.value)}
-                />
-              </div>
-            </div>
+              {!config?.ativa && (
+                <div className="flex items-center space-x-2 pt-1">
+                  <Checkbox
+                    id="resetar-renovacoes"
+                    checked={resetarRenovacoes}
+                    onCheckedChange={(checked) => setResetarRenovacoes(Boolean(checked))}
+                  />
+                  <Label htmlFor="resetar-renovacoes" className="text-xs text-muted-foreground cursor-pointer">
+                    Iniciar nova campanha zerando renovações anteriores (todos os ocupados começam como pendentes)
+                  </Label>
+                </div>
+              )}
 
-            {!config?.ativa && (
-              <div className="flex items-center space-x-2 pt-1">
-                <Checkbox
-                  id="resetar-renovacoes"
-                  checked={resetarRenovacoes}
-                  onCheckedChange={(checked) => setResetarRenovacoes(Boolean(checked))}
-                />
-                <Label htmlFor="resetar-renovacoes" className="text-xs text-muted-foreground cursor-pointer">
-                  Iniciar nova campanha zerando renovações anteriores (todos os ocupados começam como pendentes)
-                </Label>
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-              {config?.ativa ? (
-                <>
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                {config?.ativa ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={handleAtivarRenovacao}
+                      disabled={configMutation.isPending}
+                      className="rounded-xl gap-1.5"
+                      size="sm"
+                    >
+                      <Calendar className="h-4 w-4" />
+                      Atualizar Datas
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => setEncerrarConfirmOpen(true)}
+                      disabled={configMutation.isPending}
+                      className="rounded-xl gap-1.5"
+                      size="sm"
+                    >
+                      <Square className="h-3.5 w-3.5" />
+                      Encerrar Renovação
+                    </Button>
+                  </>
+                ) : (
                   <Button
-                    variant="outline"
                     onClick={handleAtivarRenovacao}
                     disabled={configMutation.isPending}
-                    className="rounded-xl gap-1.5"
-                    size="sm"
+                    className="rounded-xl gap-2 font-medium"
                   >
-                    <Calendar className="h-4 w-4" />
-                    Atualizar Datas
+                    <Play className="h-4 w-4" />
+                    {configMutation.isPending ? "Ativando..." : "Começar / Ativar Renovação"}
                   </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={handleEncerrarRenovacao}
-                    disabled={configMutation.isPending}
-                    className="rounded-xl gap-1.5"
-                    size="sm"
-                  >
-                    <Square className="h-3.5 w-3.5" />
-                    Encerrar Renovação
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  onClick={handleAtivarRenovacao}
-                  disabled={configMutation.isPending}
-                  className="rounded-xl gap-2 font-medium"
-                >
-                  <Play className="h-4 w-4" />
-                  {configMutation.isPending ? "Ativando..." : "Começar / Ativar Renovação"}
-                </Button>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="p-3.5 rounded-2xl border bg-muted/30 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-primary" />
+                <span>
+                  <strong>{config?.titulo || "Renovação de Armários"}</strong>{" "}
+                  {config?.ativa && config.dataInicio && config.dataFim
+                    ? `(${new Date(config.dataInicio).toLocaleDateString("pt-BR")} até ${new Date(config.dataFim).toLocaleDateString("pt-BR")})`
+                    : ""}
+                </span>
+              </div>
+              <span>Modo Atendimento: consulte e registre renovações abaixo.</span>
+            </div>
+          )}
 
           {/* Seção 2: Contadores de Controle */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -343,8 +424,101 @@ export function RenovacaoArmariosDialog({
             </div>
           </div>
 
-          {/* Seção 3: Listagem Separada para Controle */}
+          {/* Seção 3: Filtros por Curso, Ano, Turma e Status + Listagem */}
           <div className="space-y-3">
+            <div className="p-3.5 rounded-2xl border bg-muted/20 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                  <Filter className="h-3.5 w-3.5 text-primary" />
+                  Filtrar por Curso, Ano / Série, Turma e Situação
+                </span>
+                {(cursoFilter !== "todos" || serieFilter !== "todos" || turmaFilter !== "todas" || busca.trim()) && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      setCursoFilter("todos");
+                      setSerieFilter("todos");
+                      setTurmaFilter("todas");
+                      setBusca("");
+                    }}
+                  >
+                    Limpar filtros
+                  </Button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                <Select
+                  value={cursoFilter}
+                  onValueChange={(val) => {
+                    setCursoFilter(val);
+                    setTurmaFilter("todas");
+                  }}
+                >
+                  <SelectTrigger className="rounded-xl h-10 text-xs">
+                    <SelectValue placeholder="Curso" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos os Cursos</SelectItem>
+                    {cursosDisponiveis.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {getCursoLabel(c)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={serieFilter}
+                  onValueChange={(val) => {
+                    setSerieFilter(val);
+                    setTurmaFilter("todas");
+                  }}
+                >
+                  <SelectTrigger className="rounded-xl h-10 text-xs">
+                    <SelectValue placeholder="Ano / Série" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos os Anos</SelectItem>
+                    <SelectItem value="1">1º Ano</SelectItem>
+                    <SelectItem value="2">2º Ano</SelectItem>
+                    <SelectItem value="3">3º Ano</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={turmaFilter} onValueChange={setTurmaFilter}>
+                  <SelectTrigger className="rounded-xl h-10 text-xs">
+                    <SelectValue placeholder="Turma" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas as Turmas</SelectItem>
+                    {turmasNoFiltro.map((t) => (
+                      <SelectItem key={t.id} value={t.nome}>
+                        {t.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={activeTab}
+                  onValueChange={(val) => setActiveTab(val as "pendentes" | "renovados" | "todos")}
+                >
+                  <SelectTrigger className="rounded-xl h-10 text-xs">
+                    <SelectValue placeholder="Situação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pendentes">Faltam Renovar ({pendentes.length})</SelectItem>
+                    <SelectItem value="renovados">Já Renovados ({renovados.length})</SelectItem>
+                    <SelectItem value="todos">Todos Filtrados ({ocupadosFiltrados.length})</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -356,48 +530,39 @@ export function RenovacaoArmariosDialog({
                 />
               </div>
 
-              {totalPendentesGeral > 0 && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="rounded-xl gap-1.5 text-rose-600 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                    >
-                      <Unlock className="h-4 w-4" />
-                      Liberar Não Renovados ({totalPendentesGeral})
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent className="rounded-2xl">
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Liberar Armários Não Renovados?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Esta ação irá desvincular os alunos e liberar <strong>{totalPendentesGeral} armário(s)</strong> que ainda não realizaram a renovação, tornando-os livres para novos alunos/sorteios. O histórico será preservado.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
-                      <AlertDialogAction
-                        className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
-                        onClick={() => liberarNaoRenovadosMutation.mutate()}
-                      >
-                        Sim, liberar pendentes
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+              {isGestor && totalPendentesGeral > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setLiberarEtapa(1);
+                    setLiberarConfirmOpen(true);
+                  }}
+                  className="rounded-xl gap-1.5 text-rose-600 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                >
+                  <Unlock className="h-4 w-4" />
+                  Liberar Não Renovados ({totalPendentesGeral})
+                </Button>
               )}
             </div>
 
-            <Tabs defaultValue="pendentes" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 rounded-xl">
-                <TabsTrigger value="pendentes" className="rounded-lg gap-2">
+            <Tabs
+              value={activeTab}
+              onValueChange={(val) => setActiveTab(val as "pendentes" | "renovados" | "todos")}
+              className="w-full"
+            >
+              <TabsList className="grid w-full grid-cols-3 rounded-xl">
+                <TabsTrigger value="pendentes" className="rounded-lg gap-1.5 text-xs sm:text-sm">
                   <Clock className="h-4 w-4 text-amber-600" />
-                  Precisam Renovar ({pendentes.length})
+                  Faltam Renovar ({pendentes.length})
                 </TabsTrigger>
-                <TabsTrigger value="renovados" className="rounded-lg gap-2">
+                <TabsTrigger value="renovados" className="rounded-lg gap-1.5 text-xs sm:text-sm">
                   <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                   Já Renovados ({renovados.length})
+                </TabsTrigger>
+                <TabsTrigger value="todos" className="rounded-lg gap-1.5 text-xs sm:text-sm">
+                  <RefreshCw className="h-4 w-4 text-primary" />
+                  Todos ({ocupadosFiltrados.length})
                 </TabsTrigger>
               </TabsList>
 
@@ -417,9 +582,9 @@ export function RenovacaoArmariosDialog({
                       {pendentes.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                            {armariosOcupados.length === 0
-                              ? "Nenhum armário ocupado no momento."
-                              : "Todos os armários ocupados já foram renovados! 🎉"}
+                            {ocupadosFiltrados.length === 0
+                              ? "Nenhum armário ocupado encontrado para os filtros selecionados."
+                              : "Todos os armários deste filtro já foram renovados! 🎉"}
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -464,7 +629,7 @@ export function RenovacaoArmariosDialog({
                       {renovados.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                            Nenhum armário renovado ainda nesta campanha.
+                            Nenhum armário renovado encontrado para os filtros selecionados.
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -479,16 +644,92 @@ export function RenovacaoArmariosDialog({
                                 : "—"}
                             </TableCell>
                             <TableCell className="text-right">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="rounded-xl h-8 gap-1 text-xs text-muted-foreground hover:text-amber-600"
-                                onClick={() => desfazerMutation.mutate(arm.id)}
-                                disabled={desfazerMutation.isPending}
-                              >
-                                <RotateCcw className="h-3.5 w-3.5" />
-                                Desfazer
-                              </Button>
+                              {isGestor ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="rounded-xl h-8 gap-1 text-xs text-muted-foreground hover:text-amber-600"
+                                  onClick={() => desfazerMutation.mutate(arm.id)}
+                                  disabled={desfazerMutation.isPending}
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  Desfazer
+                                </Button>
+                              ) : (
+                                <Badge className="bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                                  Renovado
+                                </Badge>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="todos" className="mt-3">
+                <div className="border rounded-2xl overflow-hidden max-h-[300px] overflow-y-auto">
+                  <Table>
+                    <TableHeader className="bg-muted/50 sticky top-0">
+                      <TableRow>
+                        <TableHead>Armário</TableHead>
+                        <TableHead>Aluno</TableHead>
+                        <TableHead>Turma</TableHead>
+                        <TableHead>Situação</TableHead>
+                        <TableHead className="text-right">Ação</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ocupadosFiltrados.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                            Nenhum armário ocupado encontrado para os filtros selecionados.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        ocupadosFiltrados.map((arm) => (
+                          <TableRow key={arm.id}>
+                            <TableCell className="font-bold">{arm.numero}</TableCell>
+                            <TableCell className="font-medium">{arm.aluno || "—"}</TableCell>
+                            <TableCell className="text-muted-foreground text-sm">{arm.turma || "—"}</TableCell>
+                            <TableCell>
+                              {arm.renovado ? (
+                                <Badge className="bg-emerald-600/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 text-[11px]">
+                                  Renovado
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[11px]">
+                                  Falta Renovar
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {!arm.renovado ? (
+                                <Button
+                                  size="sm"
+                                  className="rounded-xl h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  onClick={() => renovarMutation.mutate(arm.id)}
+                                  disabled={renovarMutation.isPending}
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                  Renovar
+                                </Button>
+                              ) : isGestor ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="rounded-xl h-8 gap-1 text-xs text-muted-foreground hover:text-amber-600"
+                                  onClick={() => desfazerMutation.mutate(arm.id)}
+                                  disabled={desfazerMutation.isPending}
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                  Desfazer
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-emerald-600 font-medium">Concluído</span>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))
@@ -501,6 +742,85 @@ export function RenovacaoArmariosDialog({
           </div>
         </div>
       </DialogContent>
+
+      {/* Dupla confirmação: Liberar Armários Não Renovados */}
+      <AlertDialog
+        open={liberarConfirmOpen}
+        onOpenChange={(val) => {
+          setLiberarConfirmOpen(val);
+          if (!val) setLiberarEtapa(1);
+        }}
+      >
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-rose-600">
+              <AlertTriangle className="h-5 w-5" />
+              {liberarEtapa === 1
+                ? "Liberar Armários Não Renovados?"
+                : "Confirmação Final — Liberar Todos os Pendentes?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {liberarEtapa === 1 ? (
+                <>
+                  Esta ação irá desvincular os alunos e liberar <strong>{totalPendentesGeral} armário(s)</strong> que ainda não realizaram a renovação, tornando-os livres para novos alunos/sorteios.
+                </>
+              ) : (
+                <>
+                  Tem <strong>certeza absoluta</strong> de que deseja liberar agora todos os{" "}
+                  <strong>{totalPendentesGeral} armário(s) não renovado(s)</strong>? Esta operação liberará os armários em massa imediatamente.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
+            {liberarEtapa === 1 ? (
+              <Button
+                variant="destructive"
+                className="rounded-xl"
+                onClick={() => setLiberarEtapa(2)}
+              >
+                Continuar para Confirmação
+              </Button>
+            ) : (
+              <AlertDialogAction
+                className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold"
+                onClick={() => liberarNaoRenovadosMutation.mutate()}
+              >
+                Sim, liberar pendentes agora
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação: Encerrar Campanha de Renovação */}
+      <AlertDialog open={encerrarConfirmOpen} onOpenChange={setEncerrarConfirmOpen}>
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Encerrar Campanha de Renovação?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja realmente encerrar a campanha de renovação ativa? Ainda restam{" "}
+              <strong>{totalPendentesGeral} armário(s)</strong> não renovado(s).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              className="rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+              onClick={() => {
+                handleEncerrarRenovacao();
+                setEncerrarConfirmOpen(false);
+              }}
+            >
+              Sim, encerrar campanha
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

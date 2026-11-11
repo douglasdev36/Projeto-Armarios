@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 interface DetalhesTurmaModalProps {
@@ -31,6 +32,7 @@ interface DetalhesTurmaModalProps {
 }
 
 export function DetalhesTurmaModal({ turmaId, turmaNome }: DetalhesTurmaModalProps) {
+  const { isGestor } = useAuth();
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [alunoParaDesvincular, setAlunoParaDesvincular] = useState<{ id: string; nome: string } | null>(null);
@@ -152,15 +154,17 @@ export function DetalhesTurmaModal({ turmaId, turmaNome }: DetalhesTurmaModalPro
                     </div>
                   </div>
 
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive hover:bg-destructive/10 hover:text-destructive text-xs gap-1 h-8 rounded-lg"
-                    onClick={() => setAlunoParaDesvincular({ id: aluno.id, nome: aluno.nome })}
-                  >
-                    <UserMinus className="h-3.5 w-3.5" />
-                    Desvincular
-                  </Button>
+                  {isGestor && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive text-xs gap-1 h-8 rounded-lg"
+                      onClick={() => setAlunoParaDesvincular({ id: aluno.id, nome: aluno.nome })}
+                    >
+                      <UserMinus className="h-3.5 w-3.5" />
+                      Desvincular
+                    </Button>
+                  )}
                 </div>
               ))
             )}

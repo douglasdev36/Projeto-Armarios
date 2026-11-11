@@ -102,37 +102,148 @@ export const exportArmariosRelatorio = (format: 'pdf' | 'excel', armarios: Armar
   }
 };
 
-// 2. Relatório de Alunos (Dados Reais)
+// 2. Relatório de Alunos Agrupado por Turmas (Dados Reais)
 export const exportAlunosRelatorio = (format: 'pdf' | 'excel', alunos: AlunoItem[]) => {
   if (alunos.length === 0) {
     throw new Error('Nenhum aluno encontrado para exportar com os filtros selecionados.');
   }
 
-  const ordenados = [...alunos].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  // Agrupa alunos por turma (preservando alunos com e sem armário)
+  const gruposMap = new Map<string, AlunoItem[]>();
+  for (const aluno of alunos) {
+    const turmaNome = aluno.turma && aluno.turma !== '—' ? aluno.turma.trim() : 'Sem Turma';
+    const lista = gruposMap.get(turmaNome) || [];
+    lista.push(aluno);
+    gruposMap.set(turmaNome, lista);
+  }
+
+  const turmasOrdenadas = Array.from(gruposMap.keys()).sort((a, b) => {
+    if (a === 'Sem Turma') return 1;
+    if (b === 'Sem Turma') return -1;
+    return a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' });
+  });
+
+  for (const turmaNome of turmasOrdenadas) {
+    gruposMap.get(turmaNome)!.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }
 
   if (format === 'pdf') {
-    const headers = ['Nome', 'Matrícula', 'Turma', 'Armário', 'Telefone', 'E-mail', 'Observação'];
-    const data = ordenados.map((a) => [
-      a.nome,
-      a.matricula,
-      a.turma || '-',
-      a.armario || 'Sem armário',
-      a.telefone || '-',
-      a.email || '-',
-      a.observacao || '-',
-    ]);
-    exportToPDF('Relatório de Alunos', headers, data, 'relatorio-alunos');
+    const doc = new jsPDF();
+
+    doc.setFontSize(18);
+    doc.setTextColor(34, 139, 87);
+    doc.text('Relatório de Alunos por Turma', 14, 20);
+
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(
+      `Gerado em: ${new Date().toLocaleString('pt-BR')} • ${turmasOrdenadas.length} turma(s) • ${alunos.length} aluno(s)`,
+      14,
+      27
+    );
+
+    let currentY = 35;
+
+    for (let idx = 0; idx < turmasOrdenadas.length; idx++) {
+      const turmaNome = turmasOrdenadas[idx];
+      const lista = gruposMap.get(turmaNome)!;
+      const comArmario = lista.filter((a) => !!a.armario).length;
+      const semArmario = lista.length - comArmario;
+
+      const pageHeight = doc.internal.pageSize.getHeight();
+      if (currentY > pageHeight - 36) {
+        doc.addPage();
+        currentY = 20;
+      }
+
+      doc.setFontSize(11.5);
+      doc.setTextColor(22, 101, 52);
+      doc.text(
+        `${turmaNome} — ${lista.length} aluno(s) (${comArmario} com armário, ${semArmario} sem armário)`,
+        14,
+        currentY
+      );
+
+      autoTable(doc, {
+        head: [['Nome', 'Matrícula', 'Armário', 'Telefone', 'E-mail', 'Observação']],
+        body: lista.map((a) => [
+          a.nome,
+          a.matricula,
+          a.armario || 'Sem armário',
+          a.telefone && a.telefone !== '—' ? a.telefone : '-',
+          a.email && a.email !== '—' ? a.email : '-',
+          a.observacao || '-',
+        ]),
+        startY: currentY + 3,
+        theme: 'striped',
+        headStyles: {
+          fillColor: [34, 139, 87],
+          textColor: 255,
+          fontStyle: 'bold',
+        },
+        alternateRowStyles: {
+          fillColor: [240, 253, 244],
+        },
+        styles: {
+          fontSize: 8.5,
+          cellPadding: 3,
+        },
+        margin: { left: 14, right: 14 },
+      });
+
+      const lastY = (doc as any).lastAutoTable?.finalY ?? currentY + 20;
+      currentY = lastY + 10;
+    }
+
+    doc.save('relatorio-alunos-por-turma.pdf');
   } else {
-    const excelData = ordenados.map((a) => ({
-      'Nome': a.nome,
-      'Matrícula': a.matricula,
-      'Turma': a.turma || '-',
-      'Armário': a.armario || 'Sem armário',
-      'Telefone': a.telefone || '-',
-      'E-mail': a.email || '-',
-      'Observação': a.observacao || '-',
-    }));
-    exportToExcel(excelData, 'Alunos', 'relatorio-alunos');
+    const workbook = XLSX.utils.book_new();
+
+    const excelData: Record<string, unknown>[] = [];
+    const resumoData: Record<string, unknown>[] = [];
+
+    for (const turmaNome of turmasOrdenadas) {
+      const lista = gruposMap.get(turmaNome)!;
+      const comArmario = lista.filter((a) => !!a.armario).length;
+      const semArmario = lista.length - comArmario;
+
+      resumoData.push({
+        'Turma': turmaNome,
+        'Total de Alunos': lista.length,
+        'Com Armário': comArmario,
+        'Sem Armário': semArmario,
+      });
+
+      for (const a of lista) {
+        excelData.push({
+          'Turma': turmaNome,
+          'Nome': a.nome,
+          'Matrícula': a.matricula,
+          'Armário': a.armario || 'Sem armário',
+          'Telefone': a.telefone && a.telefone !== '—' ? a.telefone : '-',
+          'E-mail': a.email && a.email !== '—' ? a.email : '-',
+          'Observação': a.observacao || '-',
+        });
+      }
+    }
+
+    const wsAlunos = XLSX.utils.json_to_sheet(excelData);
+    wsAlunos['!cols'] = [
+      { wch: 24 },
+      { wch: 30 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 16 },
+      { wch: 26 },
+      { wch: 28 },
+    ];
+    XLSX.utils.book_append_sheet(workbook, wsAlunos, 'Alunos por Turma');
+
+    const wsResumo = XLSX.utils.json_to_sheet(resumoData);
+    wsResumo['!cols'] = [{ wch: 26 }, { wch: 16 }, { wch: 14 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(workbook, wsResumo, 'Resumo por Turma');
+
+    XLSX.writeFile(workbook, 'relatorio-alunos-por-turma.xlsx');
   }
 };
 

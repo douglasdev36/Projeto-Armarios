@@ -46,12 +46,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { api, GrupoSorteio, AlunoItem, TurmaItem } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useLocation } from "react-router-dom";
 
 const prefixosDisponiveis = ["A", "B", "C", "D", "E", "F"];
 
 export default function Sorteio() {
+  const { isGestor } = useAuth();
   const queryClient = useQueryClient();
   const location = useLocation();
 
@@ -70,6 +72,7 @@ export default function Sorteio() {
 
   // Resultados
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [etapaSorteio, setEtapaSorteio] = useState<1 | 2>(1);
   const [resultados, setResultados] = useState<any[]>([]);
   const [resultadoSearch, setResultadoSearch] = useState("");
 
@@ -516,12 +519,15 @@ export default function Sorteio() {
                   {/* Botão de Disparo do Sorteio */}
                   <Button
                     size="lg"
-                    disabled={totalVagas === 0 || totalAlunos === 0 || previewMutation.isPending}
-                    onClick={() => setConfirmOpen(true)}
+                    disabled={!isGestor || totalVagas === 0 || totalAlunos === 0 || previewMutation.isPending}
+                    onClick={() => {
+                      setEtapaSorteio(1);
+                      setConfirmOpen(true);
+                    }}
                     className="w-full rounded-2xl h-12 shadow-lg shadow-primary/20 hover:shadow-xl font-bold gap-2 text-base"
                   >
                     <Sparkles className="h-5 w-5" />
-                    Revisar & Executar Sorteio
+                    {isGestor ? "Revisar & Executar Sorteio" : "Disponível apenas para Coordenador/Admin"}
                   </Button>
                 </div>
               </div>
@@ -530,51 +536,78 @@ export default function Sorteio() {
         </div>
       </main>
 
-      {/* Confirmação do Sorteio antes de efetivar (Requisito 4.4) */}
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      {/* Dupla Confirmação do Sorteio antes de efetivar (Requisito 4.4) */}
+      <AlertDialog
+        open={confirmOpen}
+        onOpenChange={(val) => {
+          setConfirmOpen(val);
+          if (!val) setEtapaSorteio(1);
+        }}
+      >
         <AlertDialogContent className="rounded-3xl max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-xl font-bold">
               <Sparkles className="h-6 w-6 text-primary" />
-              Confirmar Sorteio de Armários
+              {etapaSorteio === 1
+                ? "Confirmar Sorteio de Armários"
+                : "Confirmação Final — Executar Sorteio Agora?"}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3 pt-2 text-sm text-muted-foreground">
-                <p>
-                  Você está prestes a realizar o sorteio <strong>"{nomeSorteio}"</strong>.
-                </p>
-                <div className="p-3 bg-muted/40 rounded-xl space-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span>Alunos participantes:</span>
-                    <strong className="text-foreground">{totalAlunos}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Armários livres disponíveis:</span>
-                    <strong className="text-foreground">{totalVagas}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Alunos que serão contemplados:</span>
-                    <strong className="text-emerald-600 font-bold">
-                      {Math.min(totalAlunos, totalVagas)}
-                    </strong>
-                  </div>
-                </div>
-                <p className="text-xs">
-                  Após a confirmação, os armários sorteados mudarão imediatamente para <strong>Ocupado</strong> e
-                  ficarão vinculados aos alunos.
-                </p>
+                {etapaSorteio === 1 ? (
+                  <>
+                    <p>
+                      Você está prestes a realizar o sorteio <strong>"{nomeSorteio}"</strong>.
+                    </p>
+                    <div className="p-3 bg-muted/40 rounded-xl space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span>Alunos participantes:</span>
+                        <strong className="text-foreground">{totalAlunos}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Armários livres disponíveis:</span>
+                        <strong className="text-foreground">{totalVagas}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Alunos que serão contemplados:</span>
+                        <strong className="text-emerald-600 font-bold">
+                          {Math.min(totalAlunos, totalVagas)}
+                        </strong>
+                      </div>
+                    </div>
+                    <p className="text-xs">
+                      Após a confirmação, os armários sorteados mudarão imediatamente para <strong>Ocupado</strong> e
+                      ficarão vinculados aos alunos.
+                    </p>
+                  </>
+                ) : (
+                  <p>
+                    Tem <strong>certeza absoluta</strong> de que deseja sortear e vincular{" "}
+                    <strong>{Math.min(totalAlunos, totalVagas)} armário(s)</strong> agora no sorteio{" "}
+                    <strong>"{nomeSorteio}"</strong>?
+                  </p>
+                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4">
             <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => executarMutation.mutate()}
-              disabled={executarMutation.isPending}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-bold gap-2"
-            >
-              {executarMutation.isPending ? "Sorteando..." : "Sim, Efetivar Sorteio"}
-            </AlertDialogAction>
+            {etapaSorteio === 1 ? (
+              <Button
+                className="rounded-xl font-bold"
+                onClick={() => setEtapaSorteio(2)}
+              >
+                Continuar para Confirmação
+              </Button>
+            ) : (
+              <AlertDialogAction
+                onClick={() => executarMutation.mutate()}
+                disabled={executarMutation.isPending}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-bold gap-2"
+              >
+                {executarMutation.isPending ? "Sorteando..." : "Sim, Efetivar Sorteio"}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

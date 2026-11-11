@@ -1,9 +1,11 @@
-import { useState } from "react";
-import { Plus, Search, Users, GraduationCap, Pencil } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, Search, Users, GraduationCap, Pencil, Trash2, UserX, AlertTriangle, CheckSquare, Square } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +15,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -24,9 +36,11 @@ import {
 import { DetalhesTurmaModal } from "@/components/DetalhesTurmaModal";
 import { PromocaoSeletivaDialog } from "@/components/PromocaoSeletivaDialog";
 import { api, TurmaItem } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 export default function Turmas() {
+  const { isGestor } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -43,6 +57,32 @@ export default function Turmas() {
   const [editCurso, setEditCurso] = useState("");
   const [editSerie, setEditSerie] = useState("");
   const [editTurno, setEditTurno] = useState("Manhã");
+
+  // Estados para Excluir Turma (dupla confirmação)
+  const [turmaParaExcluir, setTurmaParaExcluir] = useState<TurmaItem | null>(null);
+  const [etapaExcluir, setEtapaExcluir] = useState<1 | 2>(1);
+
+  // Estados para Limpar Turma (seleção de quem fica + dupla confirmação)
+  const [turmaParaLimpar, setTurmaParaLimpar] = useState<TurmaItem | null>(null);
+  const [manterAlunoIds, setManterAlunoIds] = useState<string[]>([]);
+  const [buscaLimpar, setBuscaLimpar] = useState("");
+  const [acaoRemovidos, setAcaoRemovidos] = useState<"desvincular" | "inativar_liberar">("inativar_liberar");
+  const [confirmLimparOpen, setConfirmLimparOpen] = useState(false);
+
+  const { data: turmaLimparDetalhes, isLoading: loadingTurmaLimpar } = useQuery({
+    queryKey: ["turmaDetalhes", turmaParaLimpar?.id],
+    queryFn: () => api.getTurmaDetalhes(turmaParaLimpar!.id),
+    enabled: !!turmaParaLimpar,
+  });
+
+  useEffect(() => {
+    if (turmaParaLimpar) {
+      setManterAlunoIds([]);
+      setBuscaLimpar("");
+      setAcaoRemovidos("inativar_liberar");
+      setConfirmLimparOpen(false);
+    }
+  }, [turmaParaLimpar]);
 
   const { data: turmasData = [], isLoading } = useQuery({
     queryKey: ["turmas"],
@@ -77,6 +117,40 @@ export default function Turmas() {
     },
     onError: (err: any) => {
       toast.error(err.message || "Erro ao atualizar turma");
+    },
+  });
+
+  const deleteTurmaMutation = useMutation({
+    mutationFn: (id: string) => api.deleteTurma(id),
+    onSuccess: (data) => {
+      toast.success(data.message || "Turma excluída com sucesso!");
+      queryClient.invalidateQueries({ queryKey: ["turmas"] });
+      queryClient.invalidateQueries({ queryKey: ["alunos"] });
+      queryClient.invalidateQueries({ queryKey: ["turmaDetalhes"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
+      setTurmaParaExcluir(null);
+      setEtapaExcluir(1);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Erro ao excluir turma");
+    },
+  });
+
+  const limparTurmaMutation = useMutation({
+    mutationFn: ({ id, manterIds, modo }: { id: string; manterIds: string[]; modo: "desvincular" | "inativar_liberar" }) =>
+      api.limparTurma(id, { manterAlunoIds: manterIds, acaoRemovidos: modo }),
+    onSuccess: (data) => {
+      toast.success(data.message || "Turma limpa com sucesso!");
+      queryClient.invalidateQueries({ queryKey: ["turmas"] });
+      queryClient.invalidateQueries({ queryKey: ["alunos"] });
+      queryClient.invalidateQueries({ queryKey: ["armarios"] });
+      queryClient.invalidateQueries({ queryKey: ["turmaDetalhes"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
+      setConfirmLimparOpen(false);
+      setTurmaParaLimpar(null);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Erro ao limpar turma");
     },
   });
 
@@ -135,16 +209,17 @@ export default function Turmas() {
                 Crie turmas, consulte listas de alunos e realize promoções seletivas com segurança.
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <PromocaoSeletivaDialog />
+            {isGestor && (
+              <div className="flex flex-wrap gap-3">
+                <PromocaoSeletivaDialog />
 
-              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button size="lg" className="rounded-2xl shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all font-medium">
-                    <Plus className="h-5 w-5 mr-2" />
-                    Nova Turma
-                  </Button>
-                </DialogTrigger>
+                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="lg" className="rounded-2xl shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all font-medium">
+                      <Plus className="h-5 w-5 mr-2" />
+                      Nova Turma
+                    </Button>
+                  </DialogTrigger>
                 <DialogContent className="sm:max-w-[480px] rounded-3xl">
                   <DialogHeader>
                     <DialogTitle className="text-xl">Criar Nova Turma</DialogTitle>
@@ -226,7 +301,8 @@ export default function Turmas() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Stats Cards */}
@@ -297,18 +373,43 @@ export default function Turmas() {
                         <GraduationCap className="h-6 w-6 text-primary" />
                       </div>
 
-                      {/* Botões de Ação (Visualizar Alunos e Editar Turma) */}
+                      {/* Botões de Ação */}
                       <div className="flex items-center gap-1">
                         <DetalhesTurmaModal turmaId={turma.id} turmaNome={turma.nome} />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openEditDialog(turma)}
-                          title="Editar turma"
-                          className="rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
+                        {isGestor && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => openEditDialog(turma)}
+                              title="Editar turma"
+                              className="rounded-xl text-muted-foreground hover:text-primary hover:bg-primary/10"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setTurmaParaLimpar(turma)}
+                              title="Limpar turma (escolher quem permanece)"
+                              className="rounded-xl text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                            >
+                              <UserX className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setTurmaParaExcluir(turma);
+                                setEtapaExcluir(1);
+                              }}
+                              title="Excluir turma"
+                              className="rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -426,6 +527,267 @@ export default function Turmas() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* Dialog de Limpar Turma (Escolher quem fica) */}
+          <Dialog open={!!turmaParaLimpar} onOpenChange={(open) => !open && setTurmaParaLimpar(null)}>
+            <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-6 rounded-3xl">
+              <DialogHeader>
+                <DialogTitle className="text-xl flex items-center gap-2 text-amber-600">
+                  <UserX className="h-5 w-5" />
+                  Limpar Turma — {turmaParaLimpar?.nome}
+                </DialogTitle>
+                <DialogDescription>
+                  Marque apenas os alunos que devem <strong>permanecer</strong> nesta turma (ex: retidos). Todos os alunos <strong>desmarcados</strong> serão removidos da turma.
+                </DialogDescription>
+              </DialogHeader>
+
+              {(() => {
+                const alunosDaTurma = turmaLimparDetalhes?.alunos || [];
+                const filtrados = alunosDaTurma.filter((a) => {
+                  const q = buscaLimpar.trim().toLowerCase();
+                  if (!q) return true;
+                  return a.nome.toLowerCase().includes(q) || a.matricula.toLowerCase().includes(q);
+                });
+                const mantidosCount = alunosDaTurma.filter((a) => manterAlunoIds.includes(a.id)).length;
+                const removidosCount = Math.max(0, alunosDaTurma.length - mantidosCount);
+
+                const toggleManter = (id: string) => {
+                  setManterAlunoIds((prev) =>
+                    prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+                  );
+                };
+
+                return (
+                  <div className="space-y-4 flex-1 min-h-0 flex flex-col">
+                    <div className="flex flex-col sm:flex-row gap-2 items-center justify-between">
+                      <div className="relative flex-1 w-full">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Buscar aluno por nome ou matrícula..."
+                          className="pl-9 h-10 rounded-xl"
+                          value={buscaLimpar}
+                          onChange={(e) => setBuscaLimpar(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-xs gap-1"
+                          onClick={() => setManterAlunoIds(alunosDaTurma.map((a) => a.id))}
+                        >
+                          <CheckSquare className="h-3.5 w-3.5" /> Manter Todos
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-xs gap-1"
+                          onClick={() => setManterAlunoIds([])}
+                        >
+                          <Square className="h-3.5 w-3.5" /> Remover Todos
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto max-h-[240px] border border-border rounded-xl p-2 space-y-1 bg-muted/20">
+                      {loadingTurmaLimpar ? (
+                        <p className="p-6 text-center text-sm text-muted-foreground">Carregando alunos da turma...</p>
+                      ) : filtrados.length === 0 ? (
+                        <p className="p-6 text-center text-sm text-muted-foreground">
+                          {alunosDaTurma.length === 0
+                            ? "Esta turma já está vazia."
+                            : "Nenhum aluno encontrado para a busca."}
+                        </p>
+                      ) : (
+                        filtrados.map((aluno) => {
+                          const vaiFicar = manterAlunoIds.includes(aluno.id);
+                          return (
+                            <div
+                              key={aluno.id}
+                              onClick={() => toggleManter(aluno.id)}
+                              className={`flex items-center justify-between p-2.5 rounded-lg cursor-pointer transition-colors ${
+                                vaiFicar
+                                  ? "bg-emerald-500/10 border border-emerald-500/30 text-foreground"
+                                  : "hover:bg-muted/50 border border-transparent text-muted-foreground"
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <Checkbox checked={vaiFicar} onCheckedChange={() => toggleManter(aluno.id)} />
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-foreground truncate">{aluno.nome}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Matrícula: {aluno.matricula}
+                                    {aluno.armario ? ` • Armário ${aluno.armario}` : ""}
+                                  </p>
+                                </div>
+                              </div>
+                              <Badge variant={vaiFicar ? "default" : "destructive"} className="text-[11px] h-5 shrink-0">
+                                {vaiFicar ? "Fica na turma" : "Será removido"}
+                              </Badge>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div className="space-y-2 p-3.5 rounded-2xl border bg-muted/30">
+                      <Label className="text-xs font-semibold uppercase text-muted-foreground">
+                        O que fazer com os {removidosCount} aluno(s) removido(s) da turma?
+                      </Label>
+                      <Select
+                        value={acaoRemovidos}
+                        onValueChange={(v) => setAcaoRemovidos(v as "desvincular" | "inativar_liberar")}
+                      >
+                        <SelectTrigger className="rounded-xl h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="inativar_liberar">
+                            Concluir/Inativar alunos removidos e liberar seus armários (Ideal p/ 3º Ano)
+                          </SelectItem>
+                          <SelectItem value="desvincular">
+                            Apenas remover da turma (Mantém alunos ativos e armários atuais)
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-center text-xs">
+                      <div>
+                        <span className="text-muted-foreground block">Total na Turma</span>
+                        <strong className="text-sm font-bold text-foreground">{alunosDaTurma.length}</strong>
+                      </div>
+                      <div>
+                        <span className="text-emerald-600 dark:text-emerald-400 block font-medium">Permanecem</span>
+                        <strong className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{mantidosCount}</strong>
+                      </div>
+                      <div>
+                        <span className="text-rose-600 dark:text-rose-400 block font-medium">Serão Removidos</span>
+                        <strong className="text-sm font-bold text-rose-700 dark:text-rose-300">{removidosCount}</strong>
+                      </div>
+                    </div>
+
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setTurmaParaLimpar(null)} className="rounded-xl">
+                        Cancelar
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        disabled={removidosCount === 0 || limparTurmaMutation.isPending}
+                        onClick={() => setConfirmLimparOpen(true)}
+                        className="rounded-xl gap-2 font-medium"
+                      >
+                        <UserX className="h-4 w-4" />
+                        Limpar Turma ({removidosCount})
+                      </Button>
+                    </DialogFooter>
+                  </div>
+                );
+              })()}
+            </DialogContent>
+          </Dialog>
+
+          {/* Dupla Confirmação para Limpar Turma */}
+          <AlertDialog open={confirmLimparOpen} onOpenChange={setConfirmLimparOpen}>
+            <AlertDialogContent className="rounded-2xl">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                  <AlertTriangle className="h-5 w-5" />
+                  Confirmação Final — Limpar Turma?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Você tem <strong>certeza absoluta</strong> que deseja limpar a turma{" "}
+                  <strong>{turmaParaLimpar?.nome}</strong>?
+                  <br />
+                  <br />
+                  {(turmaLimparDetalhes?.alunos.length ?? 0) - manterAlunoIds.length} aluno(s) serão{" "}
+                  {acaoRemovidos === "inativar_liberar"
+                    ? "inativados do sistema e seus armários serão liberados"
+                    : "desvinculados desta turma"}{" "}
+                  e <strong>{manterAlunoIds.length}</strong> permanecerão na turma.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="rounded-xl">Não, revisar seleção</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl font-bold"
+                  onClick={() => {
+                    if (turmaParaLimpar) {
+                      limparTurmaMutation.mutate({
+                        id: turmaParaLimpar.id,
+                        manterIds: manterAlunoIds,
+                        modo: acaoRemovidos,
+                      });
+                    }
+                  }}
+                >
+                  Sim, tenho certeza — Limpar Turma
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Dupla Confirmação para Excluir Turma */}
+          <AlertDialog
+            open={!!turmaParaExcluir}
+            onOpenChange={(open) => {
+              if (!open) {
+                setTurmaParaExcluir(null);
+                setEtapaExcluir(1);
+              }
+            }}
+          >
+            <AlertDialogContent className="rounded-2xl">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                  <AlertTriangle className="h-5 w-5" />
+                  {etapaExcluir === 1
+                    ? "Excluir Turma?"
+                    : "Confirmação Final — Excluir Definitivamente?"}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {etapaExcluir === 1 ? (
+                    <>
+                      Deseja excluir a turma <strong>{turmaParaExcluir?.nome}</strong>?
+                      <br />
+                      <br />
+                      Os <strong>{turmaParaExcluir?.totalAlunos ?? 0} aluno(s)</strong> vinculados ficarão sem turma atribuída (seus cadastros e armários serão preservados).
+                    </>
+                  ) : (
+                    <>
+                      Tem <strong>certeza absoluta</strong> de que deseja excluir permanentemente a turma{" "}
+                      <strong>{turmaParaExcluir?.nome}</strong>? Esta ação não pode ser desfeita.
+                    </>
+                  )}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
+                {etapaExcluir === 1 ? (
+                  <Button
+                    variant="destructive"
+                    className="rounded-xl"
+                    onClick={() => setEtapaExcluir(2)}
+                  >
+                    Continuar para Confirmação
+                  </Button>
+                ) : (
+                  <AlertDialogAction
+                    className="bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl font-bold"
+                    onClick={() => {
+                      if (turmaParaExcluir) {
+                        deleteTurmaMutation.mutate(turmaParaExcluir.id);
+                      }
+                    }}
+                  >
+                    Sim, excluir turma definitivamente
+                  </AlertDialogAction>
+                )}
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </main>
     </div>

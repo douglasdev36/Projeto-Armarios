@@ -288,12 +288,22 @@ app.use('/api', (req, res, next) => {
 // --- DASHBOARD STATS ---
 app.get('/api/dashboard/stats', async (req, res) => {
   try {
-    const [totalArmarios, armariosLivres, armariosOcupados, totalAlunos] = await Promise.all([
-      prisma.armario.count(),
-      prisma.armario.count({ where: { status: 'livre' } }),
-      prisma.armario.count({ where: { status: 'ocupado' } }),
+    const [armariosPorStatus, totalAlunos] = await Promise.all([
+      prisma.armario.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+      }),
       prisma.aluno.count({ where: { ativo: true } }),
     ]);
+
+    let totalArmarios = 0;
+    let armariosLivres = 0;
+    let armariosOcupados = 0;
+    for (const row of armariosPorStatus) {
+      totalArmarios += row._count._all;
+      if (row.status === 'livre') armariosLivres = row._count._all;
+      else if (row.status === 'ocupado') armariosOcupados = row._count._all;
+    }
 
     res.json({
       totalArmarios,
@@ -313,21 +323,36 @@ app.get('/api/dashboard/stats', async (req, res) => {
 
 app.get('/api/turmas', async (req, res) => {
   try {
-    const turmas = await prisma.turma.findMany({
-      include: {
-        alunos: {
-          where: { ativo: true },
-          include: {
-            armario: true,
-          },
+    const [turmas, alunosContagem, ocupadosPorTurma] = await Promise.all([
+      prisma.turma.findMany({
+        select: {
+          id: true,
+          nome: true,
+          anoLetivo: true,
+          curso: true,
+          serie: true,
+          turno: true,
         },
-      },
-      orderBy: { nome: 'asc' },
-    });
+        orderBy: { nome: 'asc' },
+      }),
+      prisma.aluno.groupBy({
+        by: ['turmaId'],
+        where: { ativo: true, turmaId: { not: null } },
+        _count: { _all: true },
+      }),
+      prisma.aluno.groupBy({
+        by: ['turmaId'],
+        where: { ativo: true, turmaId: { not: null }, armario: { isNot: null } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const totalMap = new Map(alunosContagem.map((r) => [r.turmaId, r._count._all]));
+    const ocupadosMap = new Map(ocupadosPorTurma.map((r) => [r.turmaId, r._count._all]));
 
     const formatted = turmas.map((t) => {
-      const totalAlunos = t.alunos.length;
-      const armariosOcupados = t.alunos.filter((a) => a.armario !== null).length;
+      const totalAlunos = totalMap.get(t.id) || 0;
+      const armariosOcupados = ocupadosMap.get(t.id) || 0;
       const armariosLivres = Math.max(0, totalAlunos - armariosOcupados);
 
       return {
@@ -350,7 +375,7 @@ app.get('/api/turmas', async (req, res) => {
   }
 });
 
-app.post('/api/turmas', async (req, res) => {
+app.post('/api/turmas', requireAdmin, async (req, res) => {
   try {
     const { nome, anoLetivo, curso, serie, turno } = req.body;
     if (!nome) {
@@ -377,7 +402,7 @@ app.post('/api/turmas', async (req, res) => {
 });
 
 // Editar turma existente
-app.put('/api/turmas/:id', async (req, res) => {
+app.put('/api/turmas/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { nome, anoLetivo, curso, serie, turno } = req.body;
@@ -466,8 +491,120 @@ app.get('/api/turmas/:id/detalhes', async (req, res) => {
   }
 });
 
+// Excluir turma (desvincula alunos mantendo cadastros e histórico)
+app.delete('/api/turmas/:id', requireAdmin, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const turma = await prisma.turma.findUnique({ where: { id } });
+    if (!turma) {
+      return res.status(404).json({ error: 'Turma não encontrada' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.aluno.updateMany({
+        where: { turmaId: id },
+        data: { turmaId: null },
+      });
+      await tx.turma.delete({ where: { id } });
+    });
+
+    res.json({ message: `Turma "${turma.nome}" excluída com sucesso. Os alunos foram preservados sem turma.` });
+  } catch (error) {
+    console.error('Error deleting turma:', error);
+    res.status(500).json({ error: 'Erro ao excluir turma' });
+  }
+});
+
+// Limpar turma (remove alunos selecionados ou todos exceto os marcados para permanecer)
+app.post('/api/turmas/:id/limpar', requireAdmin, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const { manterAlunoIds, acaoRemovidos } = req.body;
+    // acaoRemovidos: 'desvincular' | 'inativar_liberar'
+    const modo = acaoRemovidos === 'inativar_liberar' ? 'inativar_liberar' : 'desvincular';
+
+    const turma = await prisma.turma.findUnique({ where: { id } });
+    if (!turma) {
+      return res.status(404).json({ error: 'Turma não encontrada' });
+    }
+
+    const manterSet = new Set<string>(Array.isArray(manterAlunoIds) ? manterAlunoIds : []);
+
+    const alunosTurma = await prisma.aluno.findMany({
+      where: { turmaId: id, ativo: true },
+      include: { armario: true },
+    });
+
+    const alunosParaRemover = alunosTurma.filter((a) => !manterSet.has(a.id));
+    if (alunosParaRemover.length === 0) {
+      return res.json({
+        message: 'Nenhum aluno foi removido da turma (todos permaneceram).',
+        removidos: 0,
+        mantidos: alunosTurma.length,
+        armariosLiberados: 0,
+      });
+    }
+
+    const idsRemover = alunosParaRemover.map((a) => a.id);
+    let armariosLiberados = 0;
+
+    await prisma.$transaction(async (tx) => {
+      if (modo === 'inativar_liberar') {
+        const comArmario = alunosParaRemover.filter((a) => a.armario !== null);
+        if (comArmario.length > 0) {
+          armariosLiberados = comArmario.length;
+          await tx.armario.updateMany({
+            where: { id: { in: comArmario.map((a) => a.armario!.id) } },
+            data: {
+              status: 'livre',
+              alunoId: null,
+              dataDistribuicao: null,
+              renovado: false,
+              dataRenovacao: null,
+            },
+          });
+
+          await tx.historicoArmario.createMany({
+            data: comArmario.map((a) => ({
+              armarioNumero: a.armario!.numero,
+              alunoId: a.id,
+              alunoNome: a.nome,
+              tipo: 'liberacao',
+              responsavelEmail: req.user?.email,
+              detalhes: `Armário liberado ao limpar a turma "${turma.nome}" (aluno inativado)`,
+            })),
+          });
+        }
+
+        await tx.aluno.updateMany({
+          where: { id: { in: idsRemover } },
+          data: { ativo: false, turmaId: null },
+        });
+      } else {
+        await tx.aluno.updateMany({
+          where: { id: { in: idsRemover } },
+          data: { turmaId: null },
+        });
+      }
+    });
+
+    res.json({
+      message:
+        modo === 'inativar_liberar'
+          ? `Turma "${turma.nome}" limpa! ${idsRemover.length} aluno(s) encerrado(s) e ${armariosLiberados} armário(s) liberado(s).`
+          : `Turma "${turma.nome}" limpa! ${idsRemover.length} aluno(s) desvinculado(s) e ${alunosTurma.length - idsRemover.length} mantido(s).`,
+      removidos: idsRemover.length,
+      mantidos: alunosTurma.length - idsRemover.length,
+      armariosLiberados,
+    });
+  } catch (error) {
+    console.error('Error clearing turma:', error);
+    res.status(500).json({ error: 'Erro ao limpar turma' });
+  }
+});
+
 // 2.2. Desvinculação/exclusão individual de aluno da turma (Preserva histórico)
-app.delete('/api/turmas/:turmaId/alunos/:alunoId', async (req: AuthenticatedRequest, res) => {
+app.delete('/api/turmas/:turmaId/alunos/:alunoId', requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const { alunoId } = req.params;
 
@@ -490,7 +627,7 @@ app.delete('/api/turmas/:turmaId/alunos/:alunoId', async (req: AuthenticatedRequ
 });
 
 // 2.3. Promoção seletiva de turmas com transação atômica
-app.post('/api/turmas/promover-seletivo', async (req: AuthenticatedRequest, res) => {
+app.post('/api/turmas/promover-seletivo', requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const { turmaOrigemId, turmaDestinoId, alunoIdsSelecionados } = req.body;
 
@@ -567,10 +704,22 @@ app.post('/api/turmas/promover-seletivo', async (req: AuthenticatedRequest, res)
 app.get('/api/armarios', async (req, res) => {
   try {
     const armarios = await prisma.armario.findMany({
-      include: {
+      select: {
+        id: true,
+        numero: true,
+        bloco: true,
+        status: true,
+        observacao: true,
+        dataDistribuicao: true,
+        renovado: true,
+        dataRenovacao: true,
+        alunoId: true,
         aluno: {
-          include: {
-            turma: true,
+          select: {
+            nome: true,
+            telefone: true,
+            email: true,
+            turma: { select: { nome: true } },
           },
         },
       },
@@ -610,7 +759,7 @@ app.get('/api/armarios', async (req, res) => {
 });
 
 // 3.2. Distribuição manual de armários
-app.post('/api/armarios/distribuir', async (req: AuthenticatedRequest, res) => {
+app.post('/api/armarios/distribuir', requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const { armarioId, alunoId } = req.body;
 
@@ -687,7 +836,7 @@ app.post('/api/armarios/distribuir', async (req: AuthenticatedRequest, res) => {
 });
 
 // 3.3. Liberação de armários
-app.post('/api/armarios/liberar', async (req: AuthenticatedRequest, res) => {
+app.post('/api/armarios/liberar', requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const { armarioId } = req.body;
     if (!armarioId) return res.status(400).json({ error: 'ID do armário é obrigatório' });
@@ -733,7 +882,7 @@ app.post('/api/armarios/liberar', async (req: AuthenticatedRequest, res) => {
 });
 
 // 3.4. Troca de armários segura
-app.post('/api/armarios/trocar', async (req: AuthenticatedRequest, res) => {
+app.post('/api/armarios/trocar', requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const { alunoId, novoArmarioId } = req.body;
 
@@ -797,7 +946,7 @@ app.post('/api/armarios/trocar', async (req: AuthenticatedRequest, res) => {
 });
 
 // Atualizar observação de um armário (ex: armário trancado, manutenção, etc.)
-app.put('/api/armarios/:id/observacao', async (req: AuthenticatedRequest, res) => {
+app.put('/api/armarios/:id/observacao', requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { observacao } = req.body;
@@ -827,7 +976,7 @@ app.put('/api/armarios/:id/observacao', async (req: AuthenticatedRequest, res) =
 });
 
 // 3.5. Exclusão individual de armário
-app.delete('/api/armarios/:id', async (req: AuthenticatedRequest, res) => {
+app.delete('/api/armarios/:id', requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
 
@@ -849,7 +998,7 @@ app.delete('/api/armarios/:id', async (req: AuthenticatedRequest, res) => {
 });
 
 // 3.5. Prévia de exclusão por prefixo e intervalo
-app.post('/api/armarios/excluir-lote-preview', async (req, res) => {
+app.post('/api/armarios/excluir-lote-preview', requireAdmin, async (req, res) => {
   try {
     const { prefixo, inicio, fim } = req.body;
     const start = parseInt(inicio, 10);
@@ -894,7 +1043,7 @@ app.post('/api/armarios/excluir-lote-preview', async (req, res) => {
 });
 
 // 3.5. Exclusão em lote por prefixo e intervalo
-app.post('/api/armarios/excluir-lote', async (req: AuthenticatedRequest, res) => {
+app.post('/api/armarios/excluir-lote', requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const { prefixo, inicio, fim, apenasLivres } = req.body;
     const start = parseInt(inicio, 10);
@@ -936,7 +1085,7 @@ app.post('/api/armarios/excluir-lote', async (req: AuthenticatedRequest, res) =>
   }
 });
 
-app.post('/api/armarios/gerar-lote', async (req, res) => {
+app.post('/api/armarios/gerar-lote', requireAdmin, async (req, res) => {
   try {
     const { bloco, inicio, fim } = req.body;
     const start = parseInt(inicio, 10);
@@ -1010,7 +1159,7 @@ app.get('/api/renovacao', async (req, res) => {
   }
 });
 
-app.post('/api/renovacao/config', async (req: AuthenticatedRequest, res) => {
+app.post('/api/renovacao/config', requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const { ativa, titulo, dataInicio, dataFim, resetarRenovacoes } = req.body;
 
@@ -1124,7 +1273,7 @@ app.post('/api/armarios/:id/renovar', async (req: AuthenticatedRequest, res) => 
   }
 });
 
-app.post('/api/armarios/:id/desfazer-renovacao', async (req: AuthenticatedRequest, res) => {
+app.post('/api/armarios/:id/desfazer-renovacao', requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const armario = await prisma.armario.findUnique({ where: { id } });
@@ -1151,7 +1300,7 @@ app.post('/api/armarios/:id/desfazer-renovacao', async (req: AuthenticatedReques
   }
 });
 
-app.post('/api/renovacao/liberar-nao-renovados', async (req: AuthenticatedRequest, res) => {
+app.post('/api/renovacao/liberar-nao-renovados', requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const naoRenovados = await prisma.armario.findMany({
       where: {
@@ -1215,9 +1364,16 @@ app.get('/api/alunos', async (req, res) => {
 
     const alunos = await prisma.aluno.findMany({
       where,
-      include: {
-        turma: true,
-        armario: true,
+      select: {
+        id: true,
+        nome: true,
+        matricula: true,
+        telefone: true,
+        email: true,
+        observacao: true,
+        turmaId: true,
+        turma: { select: { nome: true } },
+        armario: { select: { id: true, numero: true } },
       },
       orderBy: { nome: 'asc' },
     });
@@ -1242,7 +1398,7 @@ app.get('/api/alunos', async (req, res) => {
   }
 });
 
-app.post('/api/alunos', async (req, res) => {
+app.post('/api/alunos', requireAdmin, async (req, res) => {
   try {
     const { nome, matricula, telefone, email, turmaId } = req.body;
     const novoAluno = await prisma.aluno.create({
@@ -1259,7 +1415,7 @@ app.post('/api/alunos', async (req, res) => {
 });
 
 // Importação de alunos em lote (.xlsx)
-app.post('/api/alunos/importar-lote', async (req, res) => {
+app.post('/api/alunos/importar-lote', requireAdmin, async (req, res) => {
   try {
     const { turmaId, alunos, atualizarExistentes } = req.body;
 
@@ -1379,7 +1535,7 @@ app.post('/api/alunos/importar-lote', async (req, res) => {
   }
 });
 
-app.delete('/api/alunos/:id', async (req, res) => {
+app.delete('/api/alunos/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1406,7 +1562,7 @@ app.delete('/api/alunos/:id', async (req, res) => {
 });
 
 // Atualizar observação de um aluno
-app.put('/api/alunos/:id/observacao', async (req, res) => {
+app.put('/api/alunos/:id/observacao', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { observacao } = req.body;
@@ -1435,7 +1591,7 @@ app.put('/api/alunos/:id/observacao', async (req, res) => {
   }
 });
 
-app.put('/api/alunos/:id', async (req, res) => {
+app.put('/api/alunos/:id', requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { nome, matricula, telefone, email, turmaId, turma, armario } = req.body;
@@ -1502,7 +1658,7 @@ app.put('/api/alunos/:id', async (req, res) => {
 // ==========================================
 
 // 4.1 e 4.2. Prévia de sorteio combinando múltiplos grupos de prefixos
-app.post('/api/sorteio/multi-preview', async (req, res) => {
+app.post('/api/sorteio/multi-preview', requireAdmin, async (req, res) => {
   try {
     const { grupos, alunoIds, turmaId } = req.body;
     // grupos: Array<{ prefixo: string, inicio: number, fim: number }>
@@ -1576,7 +1732,7 @@ app.post('/api/sorteio/multi-preview', async (req, res) => {
 });
 
 // 4.3 e 4.4. Execução atômica do sorteio combinado com confirmação
-app.post('/api/sorteio/executar-multi', async (req: AuthenticatedRequest, res) => {
+app.post('/api/sorteio/executar-multi', requireAdmin, async (req: AuthenticatedRequest, res) => {
   try {
     const { nomeSorteio, grupos, alunoIds } = req.body;
 

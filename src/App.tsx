@@ -1,21 +1,33 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import Alunos from "./pages/Alunos";
-import CadastrarAluno from "./pages/CadastrarAluno";
-import Armarios from "./pages/Armarios";
-import EmprestimoChaves from "./pages/EmprestimoChaves";
-import Sorteio from "./pages/Sorteio";
-import Turmas from "./pages/Turmas";
-import Relatorios from "./pages/Relatorios";
-import Configuracoes from "./pages/Configuracoes";
-import NotFound from "./pages/NotFound";
+
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Alunos = lazy(() => import("./pages/Alunos"));
+const CadastrarAluno = lazy(() => import("./pages/CadastrarAluno"));
+const Armarios = lazy(() => import("./pages/Armarios"));
+const EmprestimoChaves = lazy(() => import("./pages/EmprestimoChaves"));
+const Sorteio = lazy(() => import("./pages/Sorteio"));
+const Turmas = lazy(() => import("./pages/Turmas"));
+const Relatorios = lazy(() => import("./pages/Relatorios"));
+const Configuracoes = lazy(() => import("./pages/Configuracoes"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+
+const RouteFallback = () => (
+  <div className="flex h-screen w-full items-center justify-center bg-background">
+    <div className="flex flex-col items-center gap-3">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <p className="text-sm text-muted-foreground">Carregando página...</p>
+    </div>
+  </div>
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,7 +46,8 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
             {/* Rotas Públicas */}
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -114,7 +127,8 @@ const App = () => (
             />
 
             <Route path="*" element={<NotFound />} />
-          </Routes>
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>

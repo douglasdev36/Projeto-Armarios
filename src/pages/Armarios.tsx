@@ -39,16 +39,20 @@ import { TrocarArmarioModal } from "@/components/TrocarArmarioModal";
 import { ExcluirArmariosLoteDialog } from "@/components/ExcluirArmariosLoteDialog";
 import { RenovacaoArmariosDialog } from "@/components/RenovacaoArmariosDialog";
 import { api, ArmarioItem } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 type FilterType = "todos" | "livres" | "ocupados" | "pendentes_renovacao" | "renovados";
 
 export default function Armarios() {
+  const { isGestor } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<FilterType>("todos");
   const [selectedBloco, setSelectedBloco] = useState<string>("todos");
   const [armarioParaLiberar, setArmarioParaLiberar] = useState<ArmarioItem | null>(null);
+  const [etapaLiberar, setEtapaLiberar] = useState<1 | 2>(1);
   const [armarioParaExcluir, setArmarioParaExcluir] = useState<ArmarioItem | null>(null);
+  const [etapaExcluir, setEtapaExcluir] = useState<1 | 2>(1);
   const [armarioParaObservacao, setArmarioParaObservacao] = useState<ArmarioItem | null>(null);
   const [observacaoTexto, setObservacaoTexto] = useState("");
   const [renovacaoDialogOpen, setRenovacaoDialogOpen] = useState(false);
@@ -200,8 +204,8 @@ export default function Armarios() {
                   </Badge>
                 )}
               </Button>
-              <ExcluirArmariosLoteDialog />
-              <GerenciarArmariosDialog />
+              {isGestor && <ExcluirArmariosLoteDialog />}
+              {isGestor && <GerenciarArmariosDialog />}
             </div>
           </div>
 
@@ -478,39 +482,45 @@ export default function Armarios() {
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1.5">
                               {isLivre ? (
-                                <>
-                                  {/* 3.2. Distribuição manual */}
-                                  <DistribuirArmarioModal armario={armario} />
+                                isGestor ? (
+                                  <>
+                                    {/* 3.2. Distribuição manual */}
+                                    <DistribuirArmarioModal armario={armario} />
 
-                                  {/* Adicionar / Editar Observação */}
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className={`h-8 w-8 rounded-lg ${
-                                      armario.observacao
-                                        ? "text-amber-600 bg-amber-500/10 hover:bg-amber-500/20"
-                                        : "text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"
-                                    }`}
-                                    title={armario.observacao ? `Observação: ${armario.observacao}` : "Adicionar observação"}
-                                    onClick={() => {
-                                      setArmarioParaObservacao(armario);
-                                      setObservacaoTexto(armario.observacao || "");
-                                    }}
-                                  >
-                                    <StickyNote className="h-4 w-4" />
-                                  </Button>
+                                    {/* Adicionar / Editar Observação */}
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className={`h-8 w-8 rounded-lg ${armario.observacao
+                                          ? "text-amber-600 bg-amber-500/10 hover:bg-amber-500/20"
+                                          : "text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"
+                                        }`}
+                                      title={armario.observacao ? `Observação: ${armario.observacao}` : "Adicionar observação"}
+                                      onClick={() => {
+                                        setArmarioParaObservacao(armario);
+                                        setObservacaoTexto(armario.observacao || "");
+                                      }}
+                                    >
+                                      <StickyNote className="h-4 w-4" />
+                                    </Button>
 
-                                  {/* 3.5. Exclusão individual de armário livre */}
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
-                                    title="Excluir armário livre"
-                                    onClick={() => setArmarioParaExcluir(armario)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </>
+                                    {/* 3.5. Exclusão individual de armário livre */}
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                                      title="Excluir armário livre"
+                                      onClick={() => {
+                                        setArmarioParaExcluir(armario);
+                                        setEtapaExcluir(1);
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )
                               ) : (
                                 <>
                                   {renovacaoConfig?.ativa && !armario.renovado && (
@@ -526,38 +536,44 @@ export default function Armarios() {
                                     </Button>
                                   )}
 
-                                  {/* 3.4. Troca de armário */}
-                                  <TrocarArmarioModal armarioAtual={armario} />
+                                  {isGestor && (
+                                    <>
+                                      {/* 3.4. Troca de armário */}
+                                      <TrocarArmarioModal armarioAtual={armario} />
 
-                                  {/* Adicionar / Editar Observação */}
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className={`h-8 w-8 rounded-lg ${
-                                      armario.observacao
-                                        ? "text-amber-600 bg-amber-500/10 hover:bg-amber-500/20"
-                                        : "text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"
-                                    }`}
-                                    title={armario.observacao ? `Observação: ${armario.observacao}` : "Adicionar observação"}
-                                    onClick={() => {
-                                      setArmarioParaObservacao(armario);
-                                      setObservacaoTexto(armario.observacao || "");
-                                    }}
-                                  >
-                                    <StickyNote className="h-4 w-4" />
-                                  </Button>
+                                      {/* Adicionar / Editar Observação */}
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className={`h-8 w-8 rounded-lg ${armario.observacao
+                                            ? "text-amber-600 bg-amber-500/10 hover:bg-amber-500/20"
+                                            : "text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"
+                                          }`}
+                                        title={armario.observacao ? `Observação: ${armario.observacao}` : "Adicionar observação"}
+                                        onClick={() => {
+                                          setArmarioParaObservacao(armario);
+                                          setObservacaoTexto(armario.observacao || "");
+                                        }}
+                                      >
+                                        <StickyNote className="h-4 w-4" />
+                                      </Button>
 
-                                  {/* 3.3. Liberação de armário */}
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 gap-1.5 text-xs text-rose-600 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg"
-                                    title="Liberar armário e desvincular aluno"
-                                    onClick={() => setArmarioParaLiberar(armario)}
-                                  >
-                                    <Unlock className="h-3.5 w-3.5" />
-                                    Liberar
-                                  </Button>
+                                      {/* 3.3. Liberação de armário */}
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 gap-1.5 text-xs text-rose-600 border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg"
+                                        title="Liberar armário e desvincular aluno"
+                                        onClick={() => {
+                                          setArmarioParaLiberar(armario);
+                                          setEtapaLiberar(1);
+                                        }}
+                                      >
+                                        <Unlock className="h-3.5 w-3.5" />
+                                        Liberar
+                                      </Button>
+                                    </>
+                                  )}
                                 </>
                               )}
                             </div>
@@ -573,63 +589,123 @@ export default function Armarios() {
         </div>
       </main>
 
-      {/* Confirmação de Liberação de Armário */}
-      <AlertDialog open={!!armarioParaLiberar} onOpenChange={(val) => !val && setArmarioParaLiberar(null)}>
+      {/* Confirmação em duas etapas de Liberação de Armário */}
+      <AlertDialog
+        open={!!armarioParaLiberar}
+        onOpenChange={(val) => {
+          if (!val) {
+            setArmarioParaLiberar(null);
+            setEtapaLiberar(1);
+          }
+        }}
+      >
         <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-rose-600">
               <Unlock className="h-5 w-5" />
-              Liberar Armário {armarioParaLiberar?.numero}
+              {etapaLiberar === 1
+                ? `Liberar Armário ${armarioParaLiberar?.numero}`
+                : `Confirmação Final — Liberar ${armarioParaLiberar?.numero}?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Deseja realmente desvincular o aluno <strong>{armarioParaLiberar?.aluno}</strong> deste armário?
-              <br /><br />
-              O armário retornará ao status <strong>Livre</strong> e o histórico de utilização será preservado.
+              {etapaLiberar === 1 ? (
+                <>
+                  Deseja desvincular o aluno <strong>{armarioParaLiberar?.aluno}</strong> deste armário?
+                  <br /><br />
+                  O armário retornará ao status <strong>Livre</strong> e o histórico de utilização será preservado.
+                </>
+              ) : (
+                <>
+                  Tem <strong>certeza absoluta</strong> que deseja liberar o armário{" "}
+                  <strong>{armarioParaLiberar?.numero}</strong> de <strong>{armarioParaLiberar?.aluno}</strong> agora?
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-rose-600 hover:bg-rose-700 text-white rounded-xl"
-              onClick={() => {
-                if (armarioParaLiberar) {
-                  liberarMutation.mutate(armarioParaLiberar.id);
-                }
-              }}
-            >
-              Sim, liberar armário
-            </AlertDialogAction>
+            {etapaLiberar === 1 ? (
+              <Button
+                variant="destructive"
+                className="bg-rose-600 hover:bg-rose-700 text-white rounded-xl"
+                onClick={() => setEtapaLiberar(2)}
+              >
+                Continuar
+              </Button>
+            ) : (
+              <AlertDialogAction
+                className="bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold"
+                onClick={() => {
+                  if (armarioParaLiberar) {
+                    liberarMutation.mutate(armarioParaLiberar.id);
+                    setEtapaLiberar(1);
+                  }
+                }}
+              >
+                Sim, liberar armário
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Confirmação de Exclusão Individual de Armário */}
-      <AlertDialog open={!!armarioParaExcluir} onOpenChange={(val) => !val && setArmarioParaExcluir(null)}>
+      {/* Confirmação em duas etapas de Exclusão Individual de Armário */}
+      <AlertDialog
+        open={!!armarioParaExcluir}
+        onOpenChange={(val) => {
+          if (!val) {
+            setArmarioParaExcluir(null);
+            setEtapaExcluir(1);
+          }
+        }}
+      >
         <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
               <AlertCircle className="h-5 w-5" />
-              Excluir Armário {armarioParaExcluir?.numero}
+              {etapaExcluir === 1
+                ? `Excluir Armário ${armarioParaExcluir?.numero}`
+                : `Confirmação Final — Excluir ${armarioParaExcluir?.numero}?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza de que deseja remover permanentemente o armário <strong>{armarioParaExcluir?.numero}</strong> do sistema?
+              {etapaExcluir === 1 ? (
+                <>
+                  Deseja remover permanentemente o armário <strong>{armarioParaExcluir?.numero}</strong> do sistema?
+                </>
+              ) : (
+                <>
+                  Tem <strong>certeza absoluta</strong> que deseja excluir permanentemente o armário{" "}
+                  <strong>{armarioParaExcluir?.numero}</strong>? Esta ação não pode ser desfeita.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
+            {etapaExcluir === 1 ? (
+              <Button
+                variant="destructive"
+                className="rounded-xl"
+                onClick={() => setEtapaExcluir(2)}
+              >
+                Continuar
+              </Button>
+            ) : (
               <AlertDialogAction
-                className="bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl"
+                className="bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl font-bold"
                 onClick={() => {
                   if (armarioParaExcluir) {
                     excluirMutation.mutate(armarioParaExcluir.id);
+                    setEtapaExcluir(1);
                   }
                 }}
               >
-                Sim, excluir
+                Sim, excluir definitivamente
               </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Dialog de Observação do Armário */}
       <Dialog

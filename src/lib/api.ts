@@ -265,6 +265,27 @@ export const api = {
     return handleResponse<TurmaItem>(res);
   },
 
+  async deleteTurma(id: string) {
+    const res = await fetch(`${API_URL}/turmas/${id}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    return handleResponse<{ message: string }>(res);
+  },
+
+  async limparTurma(id: string, data: { manterAlunoIds: string[]; acaoRemovidos: 'desvincular' | 'inativar_liberar' }) {
+    const res = await fetch(`${API_URL}/turmas/${id}/limpar`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+    return handleResponse<{ message: string; removidos: number; mantidos: number; armariosLiberados: number }>(res);
+  },
+
+  warmup() {
+    return fetch(`${API_URL}/ping`, { method: 'GET' }).catch(() => {});
+  },
+
   async getTurmaDetalhes(id: string): Promise<TurmaDetalhes> {
     const res = await fetch(`${API_URL}/turmas/${id}/detalhes`, {
       headers: getAuthHeaders(),

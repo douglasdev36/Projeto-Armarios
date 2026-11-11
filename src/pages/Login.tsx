@@ -61,7 +61,7 @@ export default function Login() {
               <KeyRound className="w-6 h-6" />
             </div>
             <h1 className="text-2xl font-bold text-white">
-              Acesso do Coordenador
+              Gestão de Armários
             </h1>
             <p className="text-slate-400 mt-2 text-sm">
               Utilize suas credenciais para acessar o painel de armários.

@@ -304,6 +304,8 @@ const Configuracoes = () => {
           </div>
 
           <div className="space-y-6">
+            {isAdmin && (
+            <>
             {/* Informações da Escola */}
             <Card className="rounded-3xl">
               <CardHeader>
@@ -517,6 +519,8 @@ const Configuracoes = () => {
                 </div>
               </CardContent>
             </Card>
+            </>
+            )}
 
             {/* Aparência */}
             <Card className="rounded-3xl">
@@ -815,8 +819,12 @@ const Configuracoes = () => {
                               </TableCell>
                               <TableCell className="text-muted-foreground">{u.email}</TableCell>
                               <TableCell>
-                                <Badge variant="secondary" className="capitalize">
-                                  {u.role || "Coordenador"}
+                                <Badge variant="secondary">
+                                  {u.role === "admin"
+                                    ? "Administrador Geral"
+                                    : u.role === "atendente"
+                                      ? "Atendente"
+                                      : "Coordenador Pedagógico"}
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-right">
@@ -866,12 +874,14 @@ const Configuracoes = () => {
             )}
 
             {/* Botão Salvar */}
-            <div className="flex justify-end">
-              <Button onClick={handleSave} size="lg" className="rounded-2xl gap-2">
-                <Save className="h-5 w-5" />
-                Salvar Configurações
-              </Button>
-            </div>
+            {isAdmin && (
+              <div className="flex justify-end">
+                <Button onClick={handleSave} size="lg" className="rounded-2xl gap-2">
+                  <Save className="h-5 w-5" />
+                  Salvar Configurações
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </main>

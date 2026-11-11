@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { 
-  Plus, 
-  Trash2, 
-  Search, 
-  Pencil, 
-  Key, 
-  Shuffle, 
-  CheckSquare, 
-  Square, 
+import {
+  Plus,
+  Trash2,
+  Search,
+  Pencil,
+  Key,
+  Shuffle,
+  CheckSquare,
+  Square,
   AlertCircle,
   GraduationCap,
   RefreshCw,
@@ -61,6 +61,7 @@ import { ImportAlunosDialog } from "@/components/ImportAlunosDialog";
 import { EditarAlunoDialog } from "@/components/EditarAlunoDialog";
 import { AtribuirArmarioAlunoModal } from "@/components/AtribuirArmarioAlunoModal";
 import { api, AlunoItem, TurmaItem } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 type CursoFilterKey = "todos" | "administracao" | "eletromecanica" | "informatica" | string;
@@ -139,6 +140,7 @@ function getTurmaSerieKey(turma: TurmaItem): "1" | "2" | "3" | "outra" {
 }
 
 export default function Alunos() {
+  const { isGestor } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -146,11 +148,12 @@ export default function Alunos() {
   const [selectedCurso, setSelectedCurso] = useState<CursoFilterKey>("todos");
   const [selectedSerie, setSelectedSerie] = useState<SerieFilterKey>("todo_curso");
   const [selectedAlunoIds, setSelectedAlunoIds] = useState<string[]>([]);
-  
+
   // Modais de Edição, Armário, Observação e Exclusão
   const [editingAluno, setEditingAluno] = useState<AlunoItem | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [alunoParaExcluir, setAlunoParaExcluir] = useState<AlunoItem | null>(null);
+  const [etapaExcluirAluno, setEtapaExcluirAluno] = useState<1 | 2>(1);
   const [alunoParaArmario, setAlunoParaArmario] = useState<AlunoItem | null>(null);
   const [alunoParaObservacao, setAlunoParaObservacao] = useState<AlunoItem | null>(null);
   const [observacaoTexto, setObservacaoTexto] = useState("");
@@ -278,8 +281,8 @@ export default function Alunos() {
     selectedCurso === "todos"
       ? []
       : turmas.filter(
-          (t) => getTurmaCursoKey(t) === selectedCurso && getTurmaSerieKey(t) === "outra"
-        );
+        (t) => getTurmaCursoKey(t) === selectedCurso && getTurmaSerieKey(t) === "outra"
+      );
 
   const filteredAlunos = alunosData.filter((aluno) => {
     const searchLower = searchTerm.toLowerCase();
@@ -351,27 +354,29 @@ export default function Alunos() {
                 Consulte, edite, envie participantes para sorteios e gerencie empréstimos de chaves.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              {selectedAlunoIds.length > 0 && (
-                <Button
-                  onClick={handleEnviarParaSorteio}
-                  className="rounded-2xl gap-2 font-bold bg-primary shadow-lg shadow-primary/20 animate-scale-in"
-                >
-                  <Shuffle className="h-4 w-4" />
-                  Enviar para Sorteio ({selectedAlunoIds.length})
-                </Button>
-              )}
+            {isGestor && (
+              <div className="flex flex-wrap items-center gap-3">
+                {selectedAlunoIds.length > 0 && (
+                  <Button
+                    onClick={handleEnviarParaSorteio}
+                    className="rounded-2xl gap-2 font-bold bg-primary shadow-lg shadow-primary/20 animate-scale-in"
+                  >
+                    <Shuffle className="h-4 w-4" />
+                    Enviar para Sorteio ({selectedAlunoIds.length})
+                  </Button>
+                )}
 
-              <ImportAlunosDialog />
-              <Button
-                onClick={() => navigate("/alunos/cadastrar")}
-                size="lg"
-                className="rounded-2xl shadow-lg shadow-primary/20 hover:shadow-xl font-bold gap-2"
-              >
-                <Plus className="h-5 w-5" />
-                Adicionar Aluno
-              </Button>
-            </div>
+                <ImportAlunosDialog />
+                <Button
+                  onClick={() => navigate("/alunos/cadastrar")}
+                  size="lg"
+                  className="rounded-2xl shadow-lg shadow-primary/20 hover:shadow-xl font-bold gap-2"
+                >
+                  <Plus className="h-5 w-5" />
+                  Adicionar Aluno
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Search e Filtro por Curso / Série (estilo Armários) */}
@@ -454,29 +459,33 @@ export default function Alunos() {
 
           {/* Barra de Ações Rápidas de Seleção */}
           <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleSelectAll}
-                className="h-8 gap-1.5 text-xs rounded-lg"
-              >
-                {selectedAlunoIds.length === filteredAlunos.length && filteredAlunos.length > 0 ? (
-                  <>
-                    <Square className="h-3.5 w-3.5" /> Desmarcar Todos
-                  </>
-                ) : (
-                  <>
-                    <CheckSquare className="h-3.5 w-3.5" /> Selecionar Todos da Lista
-                  </>
+            {isGestor ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSelectAll}
+                  className="h-8 gap-1.5 text-xs rounded-lg"
+                >
+                  {selectedAlunoIds.length === filteredAlunos.length && filteredAlunos.length > 0 ? (
+                    <>
+                      <Square className="h-3.5 w-3.5" /> Desmarcar Todos
+                    </>
+                  ) : (
+                    <>
+                      <CheckSquare className="h-3.5 w-3.5" /> Selecionar Todos da Lista
+                    </>
+                  )}
+                </Button>
+                {selectedAlunoIds.length > 0 && (
+                  <span>
+                    <strong>{selectedAlunoIds.length}</strong> de {filteredAlunos.length} selecionados
+                  </span>
                 )}
-              </Button>
-              {selectedAlunoIds.length > 0 && (
-                <span>
-                  <strong>{selectedAlunoIds.length}</strong> de {filteredAlunos.length} selecionados
-                </span>
-              )}
-            </div>
+              </div>
+            ) : (
+              <span>Modo visualização e empréstimo de chaves</span>
+            )}
 
             <div className="flex items-center gap-3">
               <Button
@@ -500,15 +509,17 @@ export default function Alunos() {
               <Table>
                 <TableHeader className="sticky top-0 bg-card z-10 shadow-[0_1px_0_rgba(0,0,0,0.1)]">
                   <TableRow>
-                    <TableHead className="w-[50px] text-center">
-                      <Checkbox
-                        checked={
-                          filteredAlunos.length > 0 &&
-                          selectedAlunoIds.length === filteredAlunos.length
-                        }
-                        onCheckedChange={handleSelectAll}
-                      />
-                    </TableHead>
+                    {isGestor && (
+                      <TableHead className="w-[50px] text-center">
+                        <Checkbox
+                          checked={
+                            filteredAlunos.length > 0 &&
+                            selectedAlunoIds.length === filteredAlunos.length
+                          }
+                          onCheckedChange={handleSelectAll}
+                        />
+                      </TableHead>
+                    )}
                     <TableHead>Nome do Aluno</TableHead>
                     <TableHead>Matrícula</TableHead>
                     <TableHead>Turma</TableHead>
@@ -553,16 +564,17 @@ export default function Alunos() {
                       return (
                         <TableRow
                           key={aluno.id}
-                          className={`hover:bg-muted/40 transition-colors ${
-                            isSelected ? "bg-primary/5" : ""
-                          }`}
+                          className={`hover:bg-muted/40 transition-colors ${isSelected ? "bg-primary/5" : ""
+                            }`}
                         >
-                          <TableCell className="text-center">
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => toggleSelectAluno(aluno.id)}
-                            />
-                          </TableCell>
+                          {isGestor && (
+                            <TableCell className="text-center">
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleSelectAluno(aluno.id)}
+                              />
+                            </TableCell>
+                          )}
 
                           <TableCell className="font-semibold text-foreground">
                             <div>{aluno.nome}</div>
@@ -601,26 +613,27 @@ export default function Alunos() {
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
                               {/* Atribuir Armário */}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                disabled={temArmario}
-                                className={`h-8 w-8 rounded-lg ${
-                                  temArmario
-                                    ? "text-muted-foreground opacity-35 cursor-not-allowed"
-                                    : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                                }`}
-                                onClick={() => setAlunoParaArmario(aluno)}
-                                title={
-                                  temArmario
-                                    ? `Aluno já possui o armário ${aluno.armario}`
-                                    : "Atribuir armário para este aluno"
-                                }
-                              >
-                                <Archive className="h-4 w-4" />
-                              </Button>
+                              {isGestor && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  disabled={temArmario}
+                                  className={`h-8 w-8 rounded-lg ${temArmario
+                                      ? "text-muted-foreground opacity-35 cursor-not-allowed"
+                                      : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                                    }`}
+                                  onClick={() => setAlunoParaArmario(aluno)}
+                                  title={
+                                    temArmario
+                                      ? `Aluno já possui o armário ${aluno.armario}`
+                                      : "Atribuir armário para este aluno"
+                                  }
+                                >
+                                  <Archive className="h-4 w-4" />
+                                </Button>
+                              )}
 
-                              {/* 6.1. Atalho Emprestar Chave */}
+                              {/* 6.1. Atalho Emprestar Chave (disponível para Gestor e Atendente) */}
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -634,45 +647,51 @@ export default function Alunos() {
                                 <Key className="h-4 w-4" />
                               </Button>
 
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className={`h-8 w-8 rounded-lg ${
-                                  aluno.observacao
-                                    ? "text-amber-600 bg-amber-500/10 hover:bg-amber-500/20"
-                                    : "text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"
-                                }`}
-                                onClick={() => {
-                                  setAlunoParaObservacao(aluno);
-                                  setObservacaoTexto(aluno.observacao || "");
-                                }}
-                                title={aluno.observacao ? `Observação: ${aluno.observacao}` : "Adicionar observação"}
-                              >
-                                <StickyNote className="h-4 w-4" />
-                              </Button>
+                              {isGestor && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={`h-8 w-8 rounded-lg ${aluno.observacao
+                                        ? "text-amber-600 bg-amber-500/10 hover:bg-amber-500/20"
+                                        : "text-muted-foreground hover:text-amber-600 hover:bg-amber-500/10"
+                                      }`}
+                                    onClick={() => {
+                                      setAlunoParaObservacao(aluno);
+                                      setObservacaoTexto(aluno.observacao || "");
+                                    }}
+                                    title={aluno.observacao ? `Observação: ${aluno.observacao}` : "Adicionar observação"}
+                                  >
+                                    <StickyNote className="h-4 w-4" />
+                                  </Button>
 
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-primary hover:bg-primary/10 rounded-lg"
-                                onClick={() => {
-                                  setEditingAluno(aluno);
-                                  setEditDialogOpen(true);
-                                }}
-                                title="Editar dados do aluno"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-primary hover:bg-primary/10 rounded-lg"
+                                    onClick={() => {
+                                      setEditingAluno(aluno);
+                                      setEditDialogOpen(true);
+                                    }}
+                                    title="Editar dados do aluno"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
 
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
-                                onClick={() => setAlunoParaExcluir(aluno)}
-                                title="Excluir aluno"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                                    onClick={() => {
+                                      setAlunoParaExcluir(aluno);
+                                      setEtapaExcluirAluno(1);
+                                    }}
+                                    title="Excluir aluno"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -834,34 +853,66 @@ export default function Alunos() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirmação de Exclusão de Aluno (Preserva integridade e histórico) */}
-      <AlertDialog open={!!alunoParaExcluir} onOpenChange={(val) => !val && setAlunoParaExcluir(null)}>
+      {/* Confirmação em duas etapas de Exclusão de Aluno */}
+      <AlertDialog
+        open={!!alunoParaExcluir}
+        onOpenChange={(val) => {
+          if (!val) {
+            setAlunoParaExcluir(null);
+            setEtapaExcluirAluno(1);
+          }
+        }}
+      >
         <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
               <AlertCircle className="h-5 w-5" />
-              Excluir Aluno
+              {etapaExcluirAluno === 1
+                ? "Excluir Aluno"
+                : "Confirmação Final — Excluir Aluno?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Deseja realmente remover o aluno <strong>{alunoParaExcluir?.nome}</strong> (Matrícula: {alunoParaExcluir?.matricula})?
-              <br /><br />
-              <span className="text-xs text-muted-foreground">
-                * O armário vinculado será automaticamente liberado e o histórico de sorteios e movimentações será mantido no sistema para fins de auditoria.
-              </span>
+              {etapaExcluirAluno === 1 ? (
+                <>
+                  Deseja remover o aluno <strong>{alunoParaExcluir?.nome}</strong> (Matrícula: {alunoParaExcluir?.matricula})?
+                  <br /><br />
+                  <span className="text-xs text-muted-foreground">
+                    * O armário vinculado será automaticamente liberado e o histórico de sorteios e movimentações será mantido no sistema para fins de auditoria.
+                  </span>
+                </>
+              ) : (
+                <>
+                  Tem <strong>certeza absoluta</strong> de que deseja excluir <strong>{alunoParaExcluir?.nome}</strong>?
+                  {alunoParaExcluir?.armario && (
+                    <> O armário <strong>{alunoParaExcluir.armario}</strong> será liberado imediatamente.</>
+                  )}
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-xl">Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl"
-              onClick={() => {
-                if (alunoParaExcluir) {
-                  deleteMutation.mutate(alunoParaExcluir.id);
-                }
-              }}
-            >
-              Sim, excluir aluno
-            </AlertDialogAction>
+            {etapaExcluirAluno === 1 ? (
+              <Button
+                variant="destructive"
+                className="rounded-xl"
+                onClick={() => setEtapaExcluirAluno(2)}
+              >
+                Continuar
+              </Button>
+            ) : (
+              <AlertDialogAction
+                className="bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl font-bold"
+                onClick={() => {
+                  if (alunoParaExcluir) {
+                    deleteMutation.mutate(alunoParaExcluir.id);
+                    setEtapaExcluirAluno(1);
+                  }
+                }}
+              >
+                Sim, excluir aluno
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

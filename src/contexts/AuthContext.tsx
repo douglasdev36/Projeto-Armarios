@@ -5,10 +5,24 @@ interface AuthContextType {
   user: UserItem | null;
   token: string | null;
   isAuthenticated: boolean;
+  isGestor: boolean;
   isLoading: boolean;
   login: (email: string, pass: string) => Promise<void>;
   logout: () => void;
   updateUser: (updatedUser: UserItem, newToken?: string) => void;
+}
+
+function isTokenStructurallyValid(token: string | null): boolean {
+  if (!token) return false;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    if (!payload?.exp) return true;
+    return payload.exp > Math.floor(Date.now() / 1000);
+  } catch {
+    return false;
+  }
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -16,10 +30,19 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem("armarios_token"));
   const [user, setUser] = useState<UserItem | null>(() => {
-    const saved = localStorage.getItem("armarios_user");
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem("armarios_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    const savedToken = localStorage.getItem("armarios_token");
+    const savedUser = localStorage.getItem("armarios_user");
+    // Hidrata instantaneamente se houver sessão em cache com JWT ainda dentro da validade
+    return !(savedUser && isTokenStructurallyValid(savedToken));
+  });
 
   const logout = () => {
     localStorage.removeItem("armarios_token");
@@ -41,6 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async function loadUser() {
       const storedToken = localStorage.getItem("armarios_token");
       if (!storedToken) {
+        api.warmup();
         setIsLoading(false);
         return;
       }
@@ -77,12 +101,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const isGestor = user?.role === "coordenador" || user?.role === "admin";
+
   return (
     <AuthContext.Provider
       value={{
         user,
         token,
         isAuthenticated: !!user,
+        isGestor,
         isLoading,
         login,
         logout,

@@ -17,6 +17,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +35,7 @@ import { toast } from "sonner";
 
 export function PromocaoSeletivaDialog() {
   const [open, setOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [origemId, setOrigemId] = useState<string>("");
   const [destinoId, setDestinoId] = useState<string>("");
   const [selectedAlunos, setSelectedAlunos] = useState<string[]>([]);
@@ -107,6 +118,23 @@ export function PromocaoSeletivaDialog() {
       turmaDestinoId: destinoId,
       alunoIdsSelecionados: selectedAlunos,
     });
+    setConfirmOpen(false);
+  };
+
+  const abrirConfirmacao = () => {
+    if (!origemId || !destinoId) {
+      toast.error("Selecione a turma de origem e a turma de destino.");
+      return;
+    }
+    if (origemId === destinoId) {
+      toast.error("A turma de destino deve ser diferente da turma de origem.");
+      return;
+    }
+    if (selectedAlunos.length === 0) {
+      toast.error("Selecione ao menos um aluno para promover.");
+      return;
+    }
+    setConfirmOpen(true);
   };
 
   return (
@@ -246,7 +274,7 @@ export function PromocaoSeletivaDialog() {
             Cancelar
           </Button>
           <Button
-            onClick={handleConfirmar}
+            onClick={abrirConfirmacao}
             disabled={promocaoMutation.isPending || !origemId || !destinoId || selectedAlunos.length === 0}
             className="rounded-xl gap-2 font-medium"
           >
@@ -255,6 +283,28 @@ export function PromocaoSeletivaDialog() {
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="h-5 w-5" />
+              Confirmar Promoção de Turma?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Você está prestes a transferir <strong>{qtdPromovidos} aluno(s)</strong> de{" "}
+              <strong>{turmaOrigemDetalhes?.nome}</strong> para <strong>{turmaDestinoObj?.nome}</strong>{" "}
+              ({qtdRetidos} permanecerão na turma atual). Deseja realmente executar esta promoção?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">Voltar e Revisar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmar} className="rounded-xl font-bold">
+              Sim, confirmar promoção
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

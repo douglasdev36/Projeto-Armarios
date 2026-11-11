@@ -29,16 +29,22 @@ const menuItems = [
   { icon: Users, label: "Alunos", path: "/alunos" },
   { icon: Archive, label: "Armários", path: "/armarios" },
   { icon: Key, label: "Chaves", path: "/chaves", showKeyAlerts: true },
-  { icon: Shuffle, label: "Sorteio", path: "/sorteio" },
+  { icon: Shuffle, label: "Sorteio", path: "/sorteio", gestorOnly: true },
   { icon: BarChart3, label: "Relatórios", path: "/relatorios" },
   { icon: Settings, label: "Configurações", path: "/configuracoes" },
 ];
+
+function formatRoleLabel(role?: string) {
+  if (role === "admin") return "Administrador Geral";
+  if (role === "atendente") return "Atendente";
+  return "Coordenador Pedagógico";
+}
 
 export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, isGestor, logout } = useAuth();
 
   const { data: alertasChaves } = useQuery({
     queryKey: ["chavesAlertas"],
@@ -78,8 +84,8 @@ export function AppSidebar() {
             <p className="font-semibold text-sidebar-foreground text-sm truncate">
               {user?.nome || "Coordenador"}
             </p>
-            <p className="text-xs text-muted-foreground capitalize">
-              {user?.role || "Administrador"}
+            <p className="text-xs text-muted-foreground truncate">
+              {formatRoleLabel(user?.role)}
             </p>
           </div>
         </div>
@@ -98,7 +104,9 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1">
-        {menuItems.map((item) => {
+        {menuItems
+          .filter((item) => !item.gestorOnly || isGestor)
+          .map((item) => {
           const isActive = location.pathname === item.path;
           const temAtrasoChave = !!item.showKeyAlerts && atrasadasCount > 0;
           const temProximaChave = !!item.showKeyAlerts && !temAtrasoChave && proximasCount > 0;
@@ -160,9 +168,11 @@ export function AppSidebar() {
 
       {/* Footer */}
       <div className="p-4 border-t border-sidebar-border space-y-2">
-        <div className="w-full">
-          <GerenciarArmariosDialog />
-        </div>
+        {isGestor && (
+          <div className="w-full">
+            <GerenciarArmariosDialog />
+          </div>
+        )}
         <button
           type="button"
           onClick={handleLogout}

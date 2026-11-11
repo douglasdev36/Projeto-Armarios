@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/contexts/AuthContext";
-import { GerenciarArmariosDialog } from "./GerenciarArmariosDialog";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -71,7 +70,7 @@ export function AppSidebar() {
   const proximasCount = alertasChaves?.proximasCount ?? 0;
 
   return (
-    <aside className="flex flex-col w-64 min-h-screen bg-sidebar border-r border-sidebar-border">
+    <aside className="flex flex-col w-64 min-h-screen sticky top-0 max-h-screen bg-sidebar border-r border-sidebar-border">
       {/* User Profile */}
       <div className="p-6 border-b border-sidebar-border flex items-center justify-between">
         <div className="flex items-center gap-3 overflow-hidden">
@@ -164,24 +163,18 @@ export function AppSidebar() {
             </Link>
           );
         })}
-      </nav>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-sidebar-border space-y-2">
-        {isGestor && (
-          <div className="w-full">
-            <GerenciarArmariosDialog />
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="w-full sidebar-item text-destructive hover:bg-destructive/10 hover:text-destructive text-left transition-colors cursor-pointer"
-        >
-          <LogOut className="h-5 w-5 shrink-0" />
-          <span>Sair da conta</span>
-        </button>
-      </div>
+        <div className="pt-2 mt-2 border-t border-sidebar-border/60">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full sidebar-item text-destructive hover:bg-destructive/10 hover:text-destructive text-left transition-colors cursor-pointer"
+          >
+            <LogOut className="h-5 w-5 shrink-0" />
+            <span>Sair da conta</span>
+          </button>
+        </div>
+      </nav>
     </aside>
   );
 }

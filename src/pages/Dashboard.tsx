@@ -108,11 +108,14 @@ export default function Dashboard() {
 
           {/* Students Consultation Table */}
           <div className="bg-card rounded-2xl border border-border p-6 animate-fade-in shadow-sm">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5">
               <h2 className="text-xl font-semibold text-foreground">Consulta de Alunos & Armários</h2>
+              <span className="text-xs text-muted-foreground">
+                Total: {filteredAlunos.length} aluno(s)
+              </span>
             </div>
 
-            <div className="mb-6 relative max-w-md">
+            <div className="mb-5 relative max-w-md">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar por nome ou matrícula..."
@@ -122,9 +125,9 @@ export default function Dashboard() {
               />
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="max-h-[460px] overflow-y-auto overflow-x-auto rounded-xl border border-border/60">
               <Table>
-                <TableHeader>
+                <TableHeader className="sticky top-0 bg-card z-10 shadow-[0_1px_0_rgba(0,0,0,0.08)]">
                   <TableRow>
                     <TableHead className="table-header">Nome do Aluno</TableHead>
                     <TableHead className="table-header">Matrícula</TableHead>

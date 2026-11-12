@@ -141,7 +141,7 @@ export interface GrupoSorteio {
 }
 
 function getAuthHeaders(customHeaders: Record<string, string> = {}): Record<string, string> {
-  const token = localStorage.getItem('armarios_token');
+  const token = sessionStorage.getItem('armarios_token') || localStorage.getItem('armarios_token');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...customHeaders,
@@ -154,8 +154,14 @@ function getAuthHeaders(customHeaders: Record<string, string> = {}): Record<stri
 
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) {
-    localStorage.removeItem('armarios_token');
-    localStorage.removeItem('armarios_user');
+    sessionStorage.removeItem('armarios_token');
+    sessionStorage.removeItem('armarios_user');
+    try {
+      localStorage.removeItem('armarios_token');
+      localStorage.removeItem('armarios_user');
+    } catch {
+      // ignore
+    }
     window.dispatchEvent(new Event('auth:unauthorized'));
     const errData = await res.json().catch(() => ({}));
     throw new Error(errData.error || 'Sessão expirada. Faça login novamente.');

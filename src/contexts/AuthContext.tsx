@@ -25,28 +25,52 @@ function isTokenStructurallyValid(token: string | null): boolean {
   }
 }
 
+// Limpa qualquer sessão persistente (localStorage / cookies antigos) para garantir que
+// o acesso seja sempre volátil por sessão e zerado ao fechar o navegador
+function purgePersistentStorage() {
+  try {
+    localStorage.removeItem("armarios_token");
+    localStorage.removeItem("armarios_user");
+    if (typeof document !== "undefined" && document.cookie) {
+      document.cookie.split(";").forEach((cookie) => {
+        const eqPos = cookie.indexOf("=");
+        const name = eqPos > -1 ? cookie.substring(0, eqPos).trim() : cookie.trim();
+        if (name) {
+          document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;`;
+        }
+      });
+    }
+  } catch {
+    // ignore
+  }
+}
+
+// Limpeza preventiva de sessões persistentes anteriores
+purgePersistentStorage();
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("armarios_token"));
+  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem("armarios_token"));
   const [user, setUser] = useState<UserItem | null>(() => {
     try {
-      const saved = localStorage.getItem("armarios_user");
+      const saved = sessionStorage.getItem("armarios_user");
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
     }
   });
   const [isLoading, setIsLoading] = useState<boolean>(() => {
-    const savedToken = localStorage.getItem("armarios_token");
-    const savedUser = localStorage.getItem("armarios_user");
-    // Hidrata instantaneamente se houver sessão em cache com JWT ainda dentro da validade
+    const savedToken = sessionStorage.getItem("armarios_token");
+    const savedUser = sessionStorage.getItem("armarios_user");
+    // Hidrata instantaneamente se houver sessão temporária nesta aba e JWT estiver válido
     return !(savedUser && isTokenStructurallyValid(savedToken));
   });
 
   const logout = () => {
-    localStorage.removeItem("armarios_token");
-    localStorage.removeItem("armarios_user");
+    purgePersistentStorage();
+    sessionStorage.removeItem("armarios_token");
+    sessionStorage.removeItem("armarios_user");
     setToken(null);
     setUser(null);
   };
@@ -62,7 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     async function loadUser() {
-      const storedToken = localStorage.getItem("armarios_token");
+      const storedToken = sessionStorage.getItem("armarios_token");
       if (!storedToken) {
         api.warmup();
         setIsLoading(false);
@@ -72,7 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const userData = await api.getMe();
         setUser(userData);
-        localStorage.setItem("armarios_user", JSON.stringify(userData));
+        sessionStorage.setItem("armarios_user", JSON.stringify(userData));
       } catch {
         // Token inválido ou expirado
         logout();
@@ -85,19 +109,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, pass: string) => {
+    purgePersistentStorage();
     const res = await api.login(email, pass);
-    localStorage.setItem("armarios_token", res.token);
-    localStorage.setItem("armarios_user", JSON.stringify(res.user));
+    sessionStorage.setItem("armarios_token", res.token);
+    sessionStorage.setItem("armarios_user", JSON.stringify(res.user));
     setToken(res.token);
     setUser(res.user);
   };
 
   const updateUser = (updatedUser: UserItem, newToken?: string) => {
     setUser(updatedUser);
-    localStorage.setItem("armarios_user", JSON.stringify(updatedUser));
+    sessionStorage.setItem("armarios_user", JSON.stringify(updatedUser));
     if (newToken) {
       setToken(newToken);
-      localStorage.setItem("armarios_token", newToken);
+      sessionStorage.setItem("armarios_token", newToken);
     }
   };
 
